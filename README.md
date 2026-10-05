@@ -13,7 +13,9 @@ Download the prebuilt native package from [Releases](https://github.com/Jmesmyki
 4. Launch directly in SteamOS Game Mode.
 5. On Wi-Fi: Disable "Wi-Fi Power Management" in Steam Deck Developer Settings to minimize latency.
 
-**Latest published build: v0.2.0 — Steam Deck preview 1 (pre-release), network version 11.** The release includes the Deck runtime archive, matching source archive, release manifest, and SHA-256 checksums. See the [v0.2.0 release notes](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.0-steamdeck-preview1) for tested behavior and known issues. The Nintendo Switch campaign package is released separately in [NxHalo-Releases](https://github.com/Jmesmykil/NxHalo-Releases/releases/tag/v0.1.1-build14) as Build14 / v0.1.1; this Deck release does not update the Switch runtime.
+**Latest published Deck build: v0.2.0 — Steam Deck preview 1 (pre-release), network version 11.** The release includes the Deck runtime archive, matching source archive, release manifest, and SHA-256 checksums. See the [v0.2.0 release notes](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.0-steamdeck-preview1) for tested behavior and known issues. The newest Switch package is now [Profile33 / v0.1.11-p33](https://github.com/Jmesmykil/NxHalo-Releases/releases/tag/v0.1.11-p33), also on network version 11. Profile33 supports cross-console multiplayer and public-lobby discovery; the physical Switch-to-Deck pairing has not yet been validated. The creator's approximate 40-player current match limit is not a measured stress-test result; public discovery runs saw lobby populations of 32 and 36, not verified simultaneous match counts.
+
+The Deck runtime remains the newest published Deck build; no later Deck binary was available to replace v0.2.0. The release notes are also maintained in this repository at [`releases/v0.2.0-steamdeck-preview1/release-notes.md`](releases/v0.2.0-steamdeck-preview1/release-notes.md).
 
 ## What the patch adds
 
