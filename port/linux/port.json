@@ -1,0 +1,18 @@
+{
+  "comment": "Native Linux build inputs. See port/linux/README.md.",
+  "projects": [
+    "halobetacache"
+  ],
+  "exclude_sources": [
+    "source/main/d3d_intimacy.cpp"
+  ],
+  "platform_sources": "port/linux/src",
+  "libraries": [
+    "SDL3",
+    "m",
+    "pthread",
+    "-L/home/astral/halo-ce-universal/lib32/usr/lib32",
+    "-Wl,-rpath,$ORIGIN"
+  ],
+  "game_sources": "port/linux/game"
+}

@@ -1,0 +1,333 @@
+diff --git a/.gitignore b/.gitignore
+index 2278312..a464e6c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -40,3 +40,4 @@ xbox/
+ # Locally extracted proprietary game data (never commit)
+ assets/
+ original/
++lib32/
+diff --git a/README.md b/README.md
+index d32d2ff..853ecf4 100644
+--- a/README.md
++++ b/README.md
+@@ -7,6 +7,8 @@ This is a port of the decompilation of Halo: Combat Evolved build 2342 (`cachebe
+ 
+ This is based on [bnunu](https://github.com/bnunu/halo)'s decompilation project, which itself is a fork of [punpckhdq/halo](https://github.com/punpckhdq/halo).
+ 
++**HaloDeck:** building and installing for the Steam Deck, the launcher, and the USA retail maps this fork also loads are described in [README_DECK.md](README_DECK.md).
++
+ ## Agent quick references
+ 
+ - [Current campaign house rules and batch/treemap cadence](docs/campaign_house_rules.md)
+@@ -21,7 +23,7 @@ You need Python and [ninja-build](https://ninja-build.org/) on your PATH; run `c
+ 
+ ### Native Linux build
+ 
+-`ninja linux` compiles the game with clang into a native 32-bit Linux executable, `build/linux/halo`. It needs clang, 32-bit glibc development files and 32-bit SDL3. It renders with OpenGL, plays sound through SDL3 audio, and takes keyboard, mouse and gamepad input. Put the PAL game data (build 01.01.14.2342) under `assets/` so that `assets/maps` exists, then run `build/linux/halo`. See [port/linux/README.md](port/linux/README.md) for controls and settings.
++`ninja linux` compiles the game with clang into a native 32-bit Linux executable, `build/linux/halo`. It needs clang and lld, 32-bit glibc development files and 32-bit SDL3. It renders with OpenGL, plays sound through SDL3 audio, and takes keyboard, mouse and gamepad input. Put the PAL game data (build 01.01.14.2342) under `assets/` so that `assets/maps` exists, then run `build/linux/halo`. See [port/linux/README.md](port/linux/README.md) for controls and settings.
+ 
+ ### Debug and release
+ 
+diff --git a/README_DECK.md b/README_DECK.md
+new file mode 100644
+index 0000000..1b80fa1
+--- /dev/null
++++ b/README_DECK.md
+@@ -0,0 +1,57 @@
++# HaloDeck — Native Halo CE for Steam Deck & Linux
++
++This repository contains the reverse-engineered Halo: Combat Evolved native Linux port, optimized and tested for Valve Steam Deck (SteamOS) and x86_64 Linux. It builds on the Linux port described in [README.md](README.md) and [port/linux/README.md](port/linux/README.md) (controls, settings, system link).
++
++No game data is included: you need the maps from your own copy of the Xbox game.
++
++## Features & Fixes
++- **Retail Map Compatibility**: Supports retail USA Rev-2 maps (`01.10.12.2276`) alongside build `01.01.14.2342`.
++- **Steam Deck Launcher**: Ships `port/linux/launch_halo.sh`, which starts the game from its own folder, where it finds its maps and libraries. The game starts fullscreen, as Gamescope expects, and uses Mesa's GL thread by default.
++- **Self-contained game folder**: the executable looks for its libraries in its own folder (and in `lib/` there) before the system's (an `$ORIGIN` run path), so a 32-bit `libSDL3.so.0` copied next to it is found without installing anything.
++
++## Building
++
++Prerequisites:
++- Python 3 and the Ninja build system
++- Clang and LLD (the default build is link-time optimised, and links with `ld.lld`)
++- 32-bit glibc development files (`lib32-glibc` on Arch, `gcc-multilib` on Debian/Ubuntu)
++- 32-bit SDL3 (`lib32-sdl3` on Arch, `libsdl3-dev:i386` on Debian/Ubuntu)
++
++```sh
++python configure.py --portable
++ninja linux
++```
++The output executable will be placed in `build/linux/halo`.
++
++`--portable` builds for any x86-64 processor. Without it the build is optimised for the processor of the computer that builds it (`-march=native`), and may not start on a Steam Deck if it was built on another computer. Add `--release` for a build that, like the retail game, does not stop at the first failed assertion.
++
++If the 32-bit SDL3 is not installed where the linker looks (for example because it was unpacked from the `lib32-sdl3` package into `lib32/` on a Steam Deck, whose system files are read-only), tell `configure.py` where it is:
++
++```sh
++python configure.py --portable --linux-lib-dir lib32/usr/lib32
++```
++
++That library is only used for linking: the game finds it at run time once it is copied next to `halo`, as below (or into `build/linux/` to run the game in place).
++
++## Steam Deck Deployment
++
++1. Create a game folder on your Steam Deck (e.g. `~/Games/HaloCE/`).
++2. Copy `build/linux/halo`, `port/linux/launch_halo.sh`, and the 32-bit `libSDL3.so.0` to that folder. The library is in `/usr/lib32/` on Arch, `/usr/lib/i386-linux-gnu/` on Debian/Ubuntu, or `lib32/usr/lib32/` if you unpacked it there. Copy the library itself, not a symbolic link to it: `cp -L /usr/lib32/libSDL3.so.0 ~/Games/HaloCE/`.
++3. Place your extracted Xbox Halo CE maps in `maps/` (or `assets/maps/`) in that folder.
++4. Add `launch_halo.sh` as a Non-Steam Game in Steam Desktop Mode.
++5. In Game Mode, launch directly with native controller support.
++
++The game writes its settings to `config.toml` next to `halo` on its first run (see [Settings](port/linux/README.md#settings)); a Steam launch option such as `HALO_FULLSCREEN=false %command%` overrides one for a single run. Saved games and the game's cache of copied maps (about 800 MB) go to `~/.local/share/halo-linux`.
++
++## Credits
++
++HaloDeck is built on other people's work:
++
++- **punpckhdq** started the Halo: Combat Evolved decompilation ([punpckhdq/halo](https://github.com/punpckhdq/halo)), and **bnunu** continued it ([bnunu/halo](https://github.com/bnunu/halo)).
++- **MrBruh** ([@cybersecurity](https://github.com/cybersecurity)) made the native Linux, Windows and Android ports this builds on ([halo-ce-universal](https://github.com/cybersecurity/halo-ce-universal)).
++- **Jonas Volman** did much of the decompilation's matching work and the 128-player system link support.
++- Everyone else who has contributed to those projects.
++- The port uses [SDL3](https://libsdl.org) (zlib license), [tomlc17](https://github.com/cktan/tomlc17) by CK Tan (MIT license) and libtiff by Sam Leffler and Silicon Graphics (libtiff license).
++- Steam Deck launcher, notes and fixes: **Jmesmykil**.
++
++Halo: Combat Evolved was developed by Bungie and published by Microsoft. HaloDeck is an unofficial fan project, not affiliated with or endorsed by Microsoft, Xbox Game Studios, Halo Studios or Bungie. Halo, Xbox and Microsoft are trademarks of the Microsoft group of companies.
+diff --git a/configure.py b/configure.py
+index 6786c01..7a1b6fe 100644
+--- a/configure.py
++++ b/configure.py
+@@ -70,6 +70,14 @@ parser.add_argument(
+     metavar="BINARY",
+     help="compiler for the native Linux build, `ninja linux` (default: clang)",
+ )
++parser.add_argument(
++    "--linux-lib-dir",
++    metavar="DIR",
++    type=Path,
++    action="append",
++    help="native Linux build: also link with the libraries in DIR, for a 32-bit SDL3 that is not installed "
++    "where the linker looks (for example unpacked into lib32/ on a Steam Deck); can be given more than once",
++)
+ parser.add_argument(
+     "--release",
+     action="store_true",
+@@ -173,6 +181,7 @@ sln.csplit_path = args.csplit
+ sln.ninja_path = args.ninja
+ sln.ml_path = args.ml
+ sln.linux_cc = args.linux_cc
++sln.linux_lib_dirs = args.linux_lib_dir or []
+ sln.port_release = args.release
+ sln.port_lto = args.lto
+ sln.port_portable = args.portable
+diff --git a/port/linux/README.md b/port/linux/README.md
+index ca9bf46..54e2b8c 100644
+--- a/port/linux/README.md
++++ b/port/linux/README.md
+@@ -11,7 +11,8 @@ verified to leave every MSVC object byte-identical (see below).
+ Requirements (no part of the Xbox SDK: the declarations the game uses from
+ it are in `port/include/xdk`):
+ 
+-- clang (any recent version; `--linux-cc` selects another compiler)
++- clang (any recent version; `--linux-cc` selects another compiler) and
++  lld, which links the default link-time optimised build
+ - 32-bit glibc development files (`lib32-glibc` on Arch,
+   `gcc-multilib`/`libc6-dev-i386` on Debian/Ubuntu)
+ - 32-bit SDL3 (`lib32-sdl3` on Arch, `libsdl3-dev:i386` on Debian/Ubuntu),
+@@ -36,7 +37,9 @@ The game data (the directory holding `maps/`) is found automatically:
+ `paths.data` in `config.toml` if set (see Settings), else the current
+ directory when it has `maps/`, else `assets/`, looked up in the current
+ directory and in the repository that holds the executable. It must be the PAL data of this build
+-(01.01.14.2342); the game rejects cache files from any other build.
++(01.01.14.2342) or the USA retail data (01.10.12.2276, see
++[README_DECK.md](../../README_DECK.md)); the game rejects cache files from
++any other build.
+ 
+ `d:\` is the data root. Every other Xbox drive `X:\` is the directory `X/`
+ below the save root, which is `paths.saves`, else
+diff --git a/port/linux/launch_halo.sh b/port/linux/launch_halo.sh
+new file mode 100755
+index 0000000..052b2ac
+--- /dev/null
++++ b/port/linux/launch_halo.sh
+@@ -0,0 +1,13 @@
++#!/bin/bash
++# Starts the game from the folder this script is in (through any symbolic
++# link to it), as a Steam Deck install keeps it (README_DECK.md): halo, the
++# 32-bit libSDL3.so.0 (here or in lib/) and the game data (maps/ or
++# assets/maps/). The game starts fullscreen and turns on Mesa's GL thread by
++# itself; config.toml or a Steam launch option such as
++# `HALO_FULLSCREEN=false %command%` changes that.
++DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
++cd "$DIR" || exit 1
++
++export LD_LIBRARY_PATH="$DIR/lib:$DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
++
++exec ./halo "$@"
+diff --git a/port/linux/port.json b/port/linux/port.json
+index 658cf6e..de3fad1 100644
+--- a/port/linux/port.json
++++ b/port/linux/port.json
+@@ -12,5 +12,9 @@
+     "m",
+     "pthread"
+   ],
++  "runpath": [
++    "$ORIGIN/lib",
++    "$ORIGIN"
++  ],
+   "game_sources": "port/linux/game"
+ }
+diff --git a/source/cache/cache_files.c b/source/cache/cache_files.c
+index 8bb22ee..867c05c 100644
+--- a/source/cache/cache_files.c
++++ b/source/cache/cache_files.c
+@@ -585,7 +585,12 @@ boolean cache_file_header_verify(
+ 		return FALSE;
+ 	}
+ 
++#ifdef HALO_LINUX
++	/* the native builds also load the USA retail game's maps */
++	if (csstrcmp(header->build, "01.01.14.2342") && csstrcmp(header->build, CACHE_FILE_USA_RETAIL_BUILD_STRING))
++#else
+ 	if (csstrcmp(header->build, "01.01.14.2342"))
++#endif
+ 	{
+ 		if (fatal)
+ 		{
+diff --git a/source/cache/cache_files.h b/source/cache/cache_files.h
+index da7339d..7ad69e1 100644
+--- a/source/cache/cache_files.h
++++ b/source/cache/cache_files.h
+@@ -24,6 +24,12 @@ enum cached_map_file_precache_state
+ 
+ /* ---------- macros */
+ 
++#ifdef HALO_LINUX
++/* the USA retail game's maps, which the native builds also load
++(README_DECK.md) */
++#define CACHE_FILE_USA_RETAIL_BUILD_STRING "01.10.12.2276"
++#endif
++
+ /* ---------- structures */
+ 
+ struct tag_block;
+diff --git a/source/cache/cache_files_windows.c b/source/cache/cache_files_windows.c
+index dc517c6..30cfc38 100644
+--- a/source/cache/cache_files_windows.c
++++ b/source/cache/cache_files_windows.c
+@@ -1016,7 +1016,15 @@ static void cache_files_open_cache_files(
+ 			char *cache_map_name = cached_map_file_get(map_file_index)->header.name;
+ 
+ 			cached_map_file_read_header(map_file_index);
++#ifdef HALO_LINUX
++			/* a cached copy of a USA retail map (cache_file_header_verify) is
++			kept too, rather than discarded at every start and copied from the
++			DVD again */
++			if (strcmp(map_file->header.build, CACHE_FILE_BUILD_STRING) != 0 &&
++				strcmp(map_file->header.build, CACHE_FILE_USA_RETAIL_BUILD_STRING) != 0)
++#else
+ 			if (strcmp(map_file->header.build, CACHE_FILE_BUILD_STRING) != 0)
++#endif
+ 			{
+ 				valid = FALSE;
+ 			}
+diff --git a/tools/linux_build.py b/tools/linux_build.py
+index 1e80f24..3219d97 100644
+--- a/tools/linux_build.py
++++ b/tools/linux_build.py
+@@ -15,7 +15,7 @@ import sys
+ from pathlib import Path
+ from typing import Any, Dict, List, Optional, Sequence, Tuple
+ 
+-from .ninja_syntax import Writer
++from .ninja_syntax import Writer, escape
+ 
+ PORT_DIR = Path("port/linux")
+ PORT_CONFIG = PORT_DIR / "port.json"
+@@ -223,6 +223,17 @@ def _quote(path: Any) -> str:
+     return f'"{text}"' if " " in text else text
+ 
+ 
++def runpath_flags(directories: Sequence[str]) -> List[str]:
++    """The linker flag giving the executable its run path, the directories
++    the loader searches for its libraries before the system's (port.json's
++    "runpath"; $ORIGIN is the executable's own directory, so a libSDL3.so.0
++    copied next to it is found). Quoted so that the shell leaves $ORIGIN
++    alone, and escaped so that ninja does."""
++    if not directories:
++        return []
++    return [escape(f"-Wl,-rpath,'{':'.join(directories)}'")]
++
++
+ def generate_linux_build(n: Writer, sln: Any) -> None:
+     if not PORT_CONFIG.is_file():
+         # a checkout without the port (or a test fixture): nothing to emit
+@@ -293,7 +304,13 @@ def generate_linux_build(n: Writer, sln: Any) -> None:
+     port_include = PORT_DIR / "include"
+     sdk_flags = f"-idirafter {XDK_INCLUDE}"
+     excluded = set(config.get("exclude_sources", []))
+-    libs = " ".join(f"-l{lib}" for lib in config.get("libraries", []))
++    # configure.py --linux-lib-dir: libraries not installed where the linker
++    # looks, such as a 32-bit SDL3 unpacked into lib32/ (README_DECK.md)
++    libs = " ".join([
++        *(f"-L{_quote(directory)}" for directory in getattr(sln, "linux_lib_dirs", None) or []),
++        *(f"-l{lib}" for lib in config.get("libraries", [])),
++        *runpath_flags(config.get("runpath", [])),
++    ])
+ 
+     def emit(obj_dir: Path, output: Path, extra_cflags: List[str], extra_ldflags: List[str],
+              implicit_inputs: List[Path]) -> None:
+diff --git a/tools/project_x86.py b/tools/project_x86.py
+index b120d2b..34ab44b 100644
+--- a/tools/project_x86.py
++++ b/tools/project_x86.py
+@@ -138,6 +138,7 @@ class SolutionConfig:
+         self.uasm_tag: Optional[str] = None  # Git tag; MASM stand-in on Linux
+         self.wrapper: Optional[Path] = None  # If None, download wibo on Linux
+         self.linux_cc: Optional[str] = None  # Native Linux build compiler (default clang)
++        self.linux_lib_dirs: List[Path] = []  # Native Linux build: more library directories (configure.py --linux-lib-dir)
+         self.port_release: bool = False  # native ports without assertion checks (configure.py --release)
+         self.android_ndk: Optional[str] = None  # Android NDK (default: found from the environment)
+         self.android_guest_cc: Optional[str] = None  # Android guest compiler (default clang)
+diff --git a/tools/test_linux_port.py b/tools/test_linux_port.py
+index 6494ca6..b218661 100644
+--- a/tools/test_linux_port.py
++++ b/tools/test_linux_port.py
+@@ -1,5 +1,6 @@
+ """Tests for the native Linux build tooling (port/linux, tools/linux_*.py)."""
+ 
++import json
+ import re
+ import shutil
+ import subprocess
+@@ -224,3 +225,30 @@ def test_build_graph_without_port_has_no_linux_target(tmp_path, monkeypatch):
+     ninja = Path("build.ninja").read_text(encoding="utf-8")
+     assert "linux_cc" not in ninja
+     assert "build linux:" not in ninja
++
++
++def test_link_takes_library_directories_and_keeps_origin_in_the_run_path(tmp_path, monkeypatch):
++    write(tmp_path / "port" / "linux" / "port.json", json.dumps({
++        "projects": ["halobetacache"],
++        "platform_sources": "port/linux/src",
++        "game_sources": "port/linux/game",
++        "libraries": ["SDL3", "m"],
++        "runpath": ["$ORIGIN/lib", "$ORIGIN"],
++    }))
++    sln = make_solution(tmp_path, monkeypatch, linux_lib_dirs=[Path("lib32/usr/lib32")], port_pgo="off")
++    generate_build_ninja(sln)
++    ninja = re.sub(r"\$\n\s+", "", Path("build.ninja").read_text(encoding="utf-8"))
++    libs = re.findall(r"^  libs = (.*)$", ninja, re.M)
++    assert libs == ["-Llib32/usr/lib32 -lSDL3 -lm -Wl,-rpath,'$$ORIGIN/lib:$$ORIGIN'"]
++    if shutil.which("ninja") is None:
++        pytest.skip("ninja is needed to expand the link command")
++    # what the linker is given once ninja and then the shell have read it:
++    # neither may expand $ORIGIN, which the loader replaces with the
++    # executable's directory
++    show = tmp_path / "show.ninja"
++    show.write_text(f"rule show\n  command = printf '%s\\n' $libs > $out\n"
++                    f"build shown.txt: show\n  libs = {libs[0]}\n", encoding="utf-8")
++    subprocess.run(["ninja", "-f", str(show)], cwd=tmp_path, check=True, capture_output=True)
++    assert (tmp_path / "shown.txt").read_text().split() == [
++        "-Llib32/usr/lib32", "-lSDL3", "-lm", "-Wl,-rpath,$ORIGIN/lib:$ORIGIN",
++    ]
