@@ -13,6 +13,8 @@ Download the prebuilt native package from [Releases](https://github.com/Jmesmyki
 4. Launch directly in SteamOS Game Mode.
 5. On Wi-Fi: Disable "Wi-Fi Power Management" in Steam Deck Developer Settings to minimize latency.
 
+**Latest published build: v0.2.0 — Steam Deck preview 1 (pre-release), network version 11.** The release includes the Deck runtime archive, matching source archive, release manifest, and SHA-256 checksums. See the [v0.2.0 release notes](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.0-steamdeck-preview1) for tested behavior and known issues. The Nintendo Switch campaign package is released separately in [NxHalo-Releases](https://github.com/Jmesmykil/NxHalo-Releases/releases/tag/v0.1.1-build14) as Build14 / v0.1.1; this Deck release does not update the Switch runtime.
+
 ## What the patch adds
 
 - **Retail map compatibility**: loads the retail USA Rev-2 maps (`01.10.12.2276`) alongside the PAL data of build `01.01.14.2342`, and keeps their cached copies between sessions.
