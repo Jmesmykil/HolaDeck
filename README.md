@@ -25,7 +25,7 @@ The current feature build includes a waiting-lobby player inspector with roster 
 
 ## What the patch adds
 
-This repository's `halodeck.patch` is the upstream Steam Deck/Rev-2 map-compatibility patch. The current NxHalo network/browser features are in the matching source archive attached to Preview 2.2.
+This repository's `halodeck.patch` is the upstream Steam Deck/Rev-2 map-compatibility patch. The current NxHalo network/browser features, including the responsive waiting-lobby layout, scrollable roster, selected-player inspection and map browser, are in the matching source archive attached to Steam Deck Preview 2.3.
 
 - **Retail map compatibility**: loads the retail USA Rev-2 maps (`01.10.12.2276`) alongside the PAL data of build `01.01.14.2342`, and keeps their cached copies between sessions.
 - **Steam Deck launcher**: `port/linux/launch_halo.sh` starts the game from its own folder, where it finds its maps and libraries. Added as a Non-Steam Game, it runs in Game Mode with controller support.
