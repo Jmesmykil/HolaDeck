@@ -2,6 +2,8 @@
 
 The latest feature build is [NxHalo Steam Deck Preview 2.3 / v0.2.3](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.3-steamdeck-preview3), a native 32-bit Linux build on network protocol 11. It adds selected-player inspection to the lobby roster and retains public online/cross-console browsing, Co-op Campaign, a 128-entry scrollable roster, responsive panels and opt-in Custom Edition map download-and-join.
 
+NxHalo Setup generates the same original 320x240 NXHALO loading image for the user-prepared `maps/loading.tga` folder used by the Switch package. The Steam Deck package includes the matching NxHalo app icons; the loading image is created locally by the setup app, and no game data or console keys are redistributed.
+
 ## Install
 
 1. Download `NxHalo-SteamDeck-preview2.3.tar.gz` from the Preview 2.3 release and extract it to a writable folder on the Deck.
