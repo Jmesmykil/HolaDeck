@@ -7,25 +7,25 @@ This repository contains no game data, and of the decompiled game code only the 
 ## Prebuilt Releases (Recommended for Players)
 
 Download the prebuilt native package from [Releases](https://github.com/Jmesmykil/HolaDeck/releases):
-1. Download [`NxHalo-SteamDeck-preview2.3.tar.gz`](https://github.com/Jmesmykil/HolaDeck/releases/download/v0.2.3-steamdeck-preview3/NxHalo-SteamDeck-preview2.3.tar.gz) and extract it to your Steam Deck.
+1. Download [`NxHalo-SteamDeck-preview2.4.tar.gz`](https://github.com/Jmesmykil/HolaDeck/releases/download/v0.2.4-steamdeck-preview4/NxHalo-SteamDeck-preview2.4.tar.gz) and extract it to your Steam Deck.
 2. Supply your own compatible original Xbox Halo game maps into `assets/maps/` inside the extracted folder. No game data, ROM, maps, or keys are provided.
 3. Add `launch_halo.sh` as a Non-Steam Game in Steam Desktop Mode.
 4. Launch directly in SteamOS Game Mode.
 5. On Wi-Fi: Disable "Wi-Fi Power Management" in Steam Deck Developer Settings to minimize latency.
 
-**Latest published Deck build: v0.2.3 - Steam Deck lobby preview 3 (pre-release, network version 11).** Download it from [Releases](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.3-steamdeck-preview3). It adds selected-player inspection to the responsive lobby and retains public cross-console browsing, Co-op Campaign labeling, the scrollable roster, and opt-in Custom Edition map download-and-join. The Omarchy builds compiled, and the new package is installed beside earlier builds on SteamOS 3.8.28. A 12-second process smoke reached main-menu music and frame 626, but visible output is unverified. Lobby interaction, live matches, resolution sweep and in-game map downloads remain unverified. See the [release notes](releases/v0.2.3-steamdeck-preview3/release-notes.md).
+**Latest Steam Deck feature preview: v0.2.4 / Preview 2.4 (pre-release, network version 11).** Download the [Preview 2.4 release](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.4-steamdeck-preview4), which includes the native runtime, matching source archive, release manifest and SHA-256 checksums. It retains the responsive waiting lobby, public cross-console/browser discovery, Co-op Campaign listings, scrollable 128-entry roster, selected-player details and HaloNet Custom Edition map download-and-join. It adds host-only, two-step Kick Console and Ban Console actions for the selected remote console. The 128-entry roster and current roughly-40-player estimate are not tested match-size claims. Live moderation, multiplayer, resolution coverage and in-game map download joining remain for owner verification. See the [release notes](releases/steamdeck-preview2.4/release-notes.md).
 
 The newest published Switch build is [Profile33 / v0.1.11-p33](https://github.com/Jmesmykil/NxHalo-Releases/releases/tag/v0.1.11-p33), also on network protocol 11. It includes cross-console multiplayer, public-lobby browsing and custom campaign characters. Its physical Switch runtime remains unaccepted; UMS staging/readback is not gameplay acceptance. The creator's about-40-player estimate is not a measured stress result.
 
-Preview 2.2 / v0.2.2 and Preview 2.1 / v0.2.1 remain available as earlier rollback candidates. Preview 2.3's matching source snapshot, release manifest and checksums are attached to its release.
+Preview 2.3 / v0.2.3, Preview 2.2 / v0.2.2 and Preview 2.1 / v0.2.1 remain available as earlier rollback candidates. Preview 2.4's matching source snapshot, release manifest and checksums are attached to its release.
 
-## Current Preview 2.3 runtime
+## Current Preview 2.4 runtime
 
-The current feature build includes a waiting-lobby player inspector with roster selection, name, player slot, team and local/remote console details. It also retains public cross-console game browsing, Co-op Campaign labeling, a scrollable roster sized for 128 entries, responsive lobby panels and opt-in Custom Edition map download-and-join. The 128-entry display and roughly 40-player practical estimate do not establish those match sizes as tested. Preview 2.3 has only a short physical process smoke; visible UI, lobby flow, resolution fit and in-game map download/join remain unverified.
+The current feature build includes a waiting-lobby player inspector with roster selection, name, player slot, team and local/remote console details. Hosts can confirm a kick or ban against the selected remote console. It also retains public cross-console/browser game discovery, Co-op Campaign listings, a scrollable roster sized for 128 entries, responsive lobby panels and opt-in Custom Edition map download-and-join from the HaloNet catalog. The 128-entry display and roughly 40-player practical estimate do not establish those match sizes as tested. Preview 2.4 has a successful Omarchy Linux build and is installed at the existing Steam Deck game path; visible UI, lobby actions, resolution fit, live matches and in-game map download/join remain unverified.
 
 ## What the patch adds
 
-This repository's `halodeck.patch` is the upstream Steam Deck/Rev-2 map-compatibility patch. The current NxHalo network/browser features, including the responsive waiting-lobby layout, scrollable roster, selected-player inspection and map browser, are in the matching source archive attached to Steam Deck Preview 2.3.
+This repository's `halodeck.patch` is the upstream Steam Deck/Rev-2 map-compatibility patch. The current NxHalo network/browser features, including the responsive waiting-lobby layout, scrollable roster, selected-player inspection and moderation actions, and map browser, are in the matching source archive attached to Steam Deck Preview 2.4.
 
 - **Retail map compatibility**: loads the retail USA Rev-2 maps (`01.10.12.2276`) alongside the PAL data of build `01.01.14.2342`, and keeps their cached copies between sessions.
 - **Steam Deck launcher**: `port/linux/launch_halo.sh` starts the game from its own folder, where it finds its maps and libraries. Added as a Non-Steam Game, it runs in Game Mode with controller support.
