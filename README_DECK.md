@@ -1,28 +1,18 @@
-# HaloDeck — Native Halo CE for Steam Deck & Linux
+# Steam Deck / Linux player guide
 
-This repository contains the reverse-engineered Halo: Combat Evolved native Linux port, optimized and tested for Valve Steam Deck (SteamOS) and x86_64 Linux.
+The latest feature build is [NxHalo Steam Deck Preview 2 / v0.2.1](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.1-steamdeck-preview2), a native 32-bit Linux build on network protocol 11. It includes public online and cross-console lobby browsing, **Co-op Campaign**, campaign character selection, a resolution-aware waiting lobby, a scrollable roster with up to 128 display entries, and opt-in download-and-join for missing Custom Edition maps.
 
-## Features & Fixes
-- **Retail Map Compatibility**: Supports retail USA Rev-2 maps (`01.10.12.2276`) alongside build `01.01.14.2342`.
-- **Steam Deck Launcher**: Ships `port/linux/launch_halo.sh` configured with `mesa_glthread=true` and `HALO_FULLSCREEN=true` for Gamescope.
-- **Standalone 32-bit Runtime**: `$ORIGIN` rpath linking with local SDL3 compatibility stubs.
+## Install
 
-## Building
+1. Download `NxHalo-SteamDeck-preview2.tar.gz` from the Preview 2 release and extract it to a writable folder on the Deck.
+2. Put your own supported Halo CE `maps` folder, including `shaders.bin` and `loading.tga`, under `assets/maps`. No game content or keys are included.
+3. Launch `launch_halo.sh` directly or add it to Steam as a non-Steam game. Do not force Proton; this is a native Linux build. SDL3 is bundled.
+4. On Wi-Fi, SteamOS Developer Mode offers a Wi-Fi Power Management toggle that can improve local packet timing.
 
-Prerequisites:
-- Clang / LLVM (32-bit multilib target support: `gcc-multilib` / `lib32-glibc`)
-- Ninja build system
-- 32-bit SDL3 development libraries
+## Lobby controls
 
-```sh
-ninja linux
-```
-The output executable will be placed in `build/linux/halo`.
+The waiting lobby shows mode, map, capacity, status, and the full player roster through scrolling. In Join Game, choose **GET MAP & JOIN** for an eligible missing Custom Edition map; the client checks the downloaded map archive and CRC before it joins.
 
-## Steam Deck Deployment
+The current practical match-size estimate is roughly 40 players. The 128-entry roster display does not mean 128-player matches are tested. Preview 2 has not yet been launched or match-tested on physical Deck hardware; see its release notes for limitations.
 
-1. Create a game folder on your Steam Deck (e.g. `~/Games/HaloCE/`).
-2. Copy `build/linux/halo`, `port/linux/launch_halo.sh`, and required libraries (`libSDL3.so`) to that directory.
-3. Place your extracted Xbox Halo CE maps in `assets/maps/` (or `maps/`).
-4. Add `launch_halo.sh` as a Non-Steam Game in Steam Desktop Mode.
-5. In Game Mode, launch directly with native controller support.
+Saved games: `~/.local/share/halo-linux` (or `HALO_SAVE_ROOT`). Settings: `config.toml` next to the program.

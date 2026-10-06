@@ -1,6 +1,6 @@
 # HaloDeck — Native Halo CE for Steam Deck & Linux
 
-HaloDeck runs Halo: Combat Evolved natively on the Valve Steam Deck (SteamOS) and other x86-64 Linux PCs, optimized and tested for the Steam Deck. It is a patch, a launcher and this guide for [halo-ce-universal](https://github.com/cybersecurity/halo-ce-universal), MrBruh's native Linux port of the community's Halo decompilation: building fetches that project's source and applies the patch.
+HaloDeck packages a native Linux build of Halo: Combat Evolved for the Valve Steam Deck (SteamOS) and other x86 Linux PCs. It is a patch, a launcher and this guide for [halo-ce-universal](https://github.com/cybersecurity/halo-ce-universal), MrBruh's native Linux port of the community's Halo decompilation: building fetches that project's source and applies the patch.
 
 This repository contains no game data, and of the decompiled game code only the few lines its patch changes. You need the maps from your own copy of the Xbox game.
 
@@ -13,11 +13,19 @@ Download the prebuilt native package from [Releases](https://github.com/Jmesmyki
 4. Launch directly in SteamOS Game Mode.
 5. On Wi-Fi: Disable "Wi-Fi Power Management" in Steam Deck Developer Settings to minimize latency.
 
-**Latest published Deck build: v0.2.0 — Steam Deck preview 1 (pre-release), network version 11.** The release includes the Deck runtime archive, matching source archive, release manifest, and SHA-256 checksums. See the [v0.2.0 release notes](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.0-steamdeck-preview1) for tested behavior and known issues. The newest Switch package is now [Profile33 / v0.1.11-p33](https://github.com/Jmesmykil/NxHalo-Releases/releases/tag/v0.1.11-p33), also on network version 11. Profile33 supports cross-console multiplayer and public-lobby discovery; the physical Switch-to-Deck pairing has not yet been validated. The creator's approximate 40-player current match limit is not a measured stress-test result; public discovery runs saw lobby populations of 32 and 36, not verified simultaneous match counts.
+**Latest published Deck build: v0.2.1 — Steam Deck lobby preview 2 (pre-release, network version 11).** Download it from [Releases](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.1-steamdeck-preview2). It adds a responsive waiting lobby, a complete scrollable roster display for up to 128 lobby entries, explicit **Co-op Campaign** labeling, and download-and-join for missing Custom Edition maps. It retains public internet/cross-console lobby discovery and campaign character selection. Roughly 40 players is the current practical match-size estimate; 128 is the roster display ceiling, not a tested match size. The build compiled on Omarchy, but this Preview 2 has not yet been launched or match-tested on a physical Deck. See the [release notes](releases/v0.2.1-steamdeck-preview2/release-notes.md).
 
-The Deck runtime remains the newest published Deck build; no later Deck binary was available to replace v0.2.0. The release notes are also maintained in this repository at [`releases/v0.2.0-steamdeck-preview1/release-notes.md`](releases/v0.2.0-steamdeck-preview1/release-notes.md).
+The newest published Switch build is [Profile33 / v0.1.11-p33](https://github.com/Jmesmykil/NxHalo-Releases/releases/tag/v0.1.11-p33), also on network protocol 11. It includes cross-console multiplayer, public-lobby browsing and custom campaign characters. Its physical Switch runtime remains unaccepted; UMS staging/readback is not gameplay acceptance. The creator's about-40-player estimate is not a measured stress result.
+
+Preview 1 / v0.2.0 remains in [Releases](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.0-steamdeck-preview1) as an earlier rollback candidate. Preview 2's matching source snapshot, release manifest and checksums are attached to its release.
+
+## Current Preview 2 runtime
+
+The prebuilt Preview 2 runtime includes online public and cross-console lobby discovery, campaign co-op labeling, a resolution-aware multiplayer waiting room, and a scrollable full roster. It can download the selected missing Custom Edition map, validate the archive and CRC, and return to the same lobby. The roster supports 128 displayed entries; practical matches are currently around 40 players by the creator's estimate. No 128-player session or Preview 2 Deck match has been verified. Campaign character selection is experimental and campaign-only.
 
 ## What the patch adds
+
+This repository's `halodeck.patch` is the upstream Steam Deck/Rev-2 map-compatibility patch. The current NxHalo network/browser features are in the matching source archive attached to Preview 2.
 
 - **Retail map compatibility**: loads the retail USA Rev-2 maps (`01.10.12.2276`) alongside the PAL data of build `01.01.14.2342`, and keeps their cached copies between sessions.
 - **Steam Deck launcher**: `port/linux/launch_halo.sh` starts the game from its own folder, where it finds its maps and libraries. Added as a Non-Steam Game, it runs in Game Mode with controller support.
