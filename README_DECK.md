@@ -13,6 +13,6 @@ The latest feature build is [NxHalo Steam Deck Preview 2.2 / v0.2.2](https://git
 
 The waiting lobby shows mode, map, capacity, status, and the full player roster through scrolling. In Join Game, choose **GET MAP & JOIN** for an eligible missing Custom Edition map; the client checks the downloaded map archive and CRC before it joins.
 
-The current practical match-size estimate is roughly 40 players. The 128-entry roster display does not mean 128-player matches are tested. Preview 2.2 booted to the main menu on SteamOS 3.8.28, but has not yet been hand-played or tested in a lobby, at other resolutions, or with a real map download. See the release notes for limitations.
+The current practical match-size estimate is roughly 40 players. The 128-entry roster display does not mean 128-player matches are tested. The Preview 2.2 process ran on SteamOS 3.8.28 through frame 5400 with clean render-health logs. The available X11 capture showed a black frame, so visible output and reaching the main menu remain unverified. It has not been hand-played or tested in a lobby, at other resolutions, or with a real map download. See the release notes for limitations.
 
 Saved games: `~/.local/share/halo-linux` (or `HALO_SAVE_ROOT`). Settings: `config.toml` next to the program.
