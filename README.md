@@ -7,7 +7,7 @@ This repository contains no game data, and of the decompiled game code only the 
 ## Prebuilt Releases (Recommended for Players)
 
 Download the prebuilt native package from [Releases](https://github.com/Jmesmykil/HolaDeck/releases):
-1. Download `NxHalo-SteamDeck.tar.gz` and extract it to your Steam Deck.
+1. Download [`NxHalo-SteamDeck-preview2.3.tar.gz`](https://github.com/Jmesmykil/HolaDeck/releases/download/v0.2.3-steamdeck-preview3/NxHalo-SteamDeck-preview2.3.tar.gz) and extract it to your Steam Deck.
 2. Supply your own compatible original Xbox Halo game maps into `assets/maps/` inside the extracted folder. No game data, ROM, maps, or keys are provided.
 3. Add `launch_halo.sh` as a Non-Steam Game in Steam Desktop Mode.
 4. Launch directly in SteamOS Game Mode.
