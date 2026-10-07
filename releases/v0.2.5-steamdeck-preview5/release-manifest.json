@@ -3,10 +3,10 @@
   "tag": "v0.2.5-steamdeck-preview5",
   "prerelease": true,
   "network_version": 11,
-  "source_commit": "b8c299b1e7d58f3671c3ea5200f29884e71c62de",
+  "source_commit": "9d6bfe351327d848ae0964b0e7eb09c4f79d2b8b",
   "build_host": "Omarchy Linux",
   "build_target": "i686 Linux, native SDL3",
-  "client_binary_sha256": "75ba16180caad83d8388e6c1e6d34cbc3db7b11a246f3edc922820058ec7ee67",
+  "client_binary_sha256": "1acd4ad282b028539efe2a76d592e4fa0cac70166e9caf8063b8ddf2fc7d1c25",
   "bundled_sdl3_sha256": "11ec5a3d6f6cdb99a68b283d7f5aac6c1f2b83d50e30c8e8636a10e321b316d9",
   "campaign": {
     "source_commit": "76b1898ee14e6fb58e0412acc183da509c10e001",
@@ -26,20 +26,20 @@
   "console_keys_included": false,
   "assets": {
     "NxHalo-SteamDeck-preview2.5.tar.gz": {
-      "bytes": 19617046,
-      "sha256": "8e2193da4a693efa904b0cd1e4a999efb19a5e70f8291e33585398fc44a52fe3"
+      "bytes": 19617040,
+      "sha256": "a39fe19006393001285c41b18cb7ef7d203ccf0b92f2dffb749ce906e61b358a"
     },
     "NxHalo-runtime-source.zip": {
-      "bytes": 17216558,
-      "sha256": "947acf4b217b90844a55b3df7837f10994ff3f307d989264a32bc40d3f71a04d"
+      "bytes": 17216664,
+      "sha256": "fefbf87feeac155cf951ad4a07a9360245aefafd35376760f5ed30efbe51b02e"
     },
     "OpenCE-Campaign-SteamDeck-protocol21.tar.gz": {
-      "bytes": 20256369,
-      "sha256": "c5d4aa788241ed5536b562c4473b41f24466f68117bde984f4cd8439fae797bd"
+      "bytes": 20256365,
+      "sha256": "24afd487007f666e861f1e4817a12da6bbe5efffa1049a71f4ec49c9c97dcb1f"
     },
     "OpenCE-campaign-source.zip": {
       "bytes": 15954255,
-      "sha256": "1af2736a50c16ffc3eea98f28f262391763cb3c031ead46f4561abaa8e4a6531"
+      "sha256": "80f68e8cf1de45ee9934d0bb7192a3e1c201ba04092f7b4263b635ad6e1539c6"
     },
     "release-notes.md": {
       "bytes": 1303,
