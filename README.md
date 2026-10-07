@@ -4,11 +4,21 @@ This repository contains the full source snapshot used for the NxHalo Steam Deck
 
 ## Current releases
 
-**NxHalo Preview 2.5 / v0.2.5, network protocol 11.** Download [the release](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.5-steamdeck-preview5), including `NxHalo-SteamDeck-preview2.5.tar.gz`, matching source, manifest and checksums. The Xbox main menu and character flow now reach the responsive network lobby. The lobby follows the window shape, shows the full game mode, player details and a scrollable 128-entry roster. A selected remote console can be kicked or banned with confirmation. Custom-map ZIP import supports safe nested entries and verifies size, deflate completion and CRC.
+**NxHalo Preview 2.6 / v0.2.6, network protocol 11.** Download [the release](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.6-steamdeck-preview6), including `NxHalo-SteamDeck-preview2.6.tar.gz`, matching source, manifest and checksums. The Xbox main menu and character flow now reach the responsive network lobby. The lobby follows the window shape, shows the full game mode, player details and a scrollable 128-entry roster. A selected remote console can be kicked or banned with confirmation. Custom-map ZIP import supports safe nested entries and verifies size, deflate completion and CRC.
 
-**Community online campaign: OpenCE, network protocol 21.** The same release includes `OpenCE-Campaign-SteamDeck-protocol21.tar.gz` and its exact source. In Multiplayer choose Create Game > Internet > SINGLEPLAYER, then a mission and difficulty. Server Setup selects PUBLIC or PRIVATE listing. This uses OpenCE's campaign synchronization and an isolated save root. All peers need compatible protocol-21 clients. Use NxHalo for existing protocol-11 Switch/native/browser rooms.
+**Community online campaign: OpenCE, network protocol 21.** The same release includes its runtime and exact source, plus the legacy V11-20 compatibility client. The network chooser provides campaign join/host without a second controller. Saves are isolated. Use NxHalo for existing protocol-11 Switch/native/browser rooms.
 
 The Switch [Profile33 / v0.1.11-p33](https://github.com/Jmesmykil/NxHalo-Releases/releases/tag/v0.1.11-p33) remains the published protocol-11 Switch build. Earlier Steam Deck previews remain available for rollback.
+
+## Server discovery and online campaign
+
+Preview 2.6 separates **JOIN CAMPAIGN LOBBIES**, **HOST ONLINE CAMPAIGN**, **MULTIPLAYER SERVERS**, and **ALL COMMUNITY SERVERS**. Online campaign does not require a second local controller; local split-screen remains a separate option. NxHalo's Multiplayer > ONLINE CAMPAIGN opens the installed OpenCE component.
+
+Source/version filters keep current V21, legacy V11-20, broker-published, community-announced, classic Halo CE, and classic Halo PC listings separate. The live directory refreshes every ten seconds alongside all four upstream brokers. Native legacy invites launch the sibling `Chupathingy-Legacy` client included in the release. Extract it beside `OpenCE-Campaign` and the NxHalo runtime.
+
+Classic master snapshots contain 253 CE and 97 PC addresses from October 6, 2026. They are listed separately with unknown player counts and activity; joining them requires a classic client. These are all discovered public sources, not a claim to enumerate private or unpublished servers.
+
+The installed Deck build displayed active native rooms and reached live multiplayer gameplay. Final campaign routing and classic-client feedback are installed for the next launch; a two-player campaign run and a legacy real-match handoff remain unverified. Friends/follow and proximity voice remain unimplemented.
 
 ## Installation
 
@@ -20,7 +30,7 @@ Both runtimes are installed on the creator's Deck, and their executable hashes w
 
 ## Verification
 
-Physical Deck captures show the full-width waiting lobby at 1920x1080 and **128/128 synthetic lobby players**. OpenCE launched to its main menu. Seven independent map archive fixtures passed, and an independent source review found no blocking issue. These checks do not establish a 128-player battle, controller scrolling/moderation, in-game internet map-download/join or a two-player campaign run. See the [release notes](releases/v0.2.5-steamdeck-preview5/release-notes.md) for precise acceptance limits. Friends/follow and proximity voice remain future work.
+Physical Deck captures show the full-width waiting lobby at 1920x1080 and **128/128 synthetic lobby players**. OpenCE launched to its main menu. Seven independent map archive fixtures passed, and an independent source review found no blocking issue. These checks do not establish a 128-player battle, controller scrolling/moderation, in-game internet map-download/join or a two-player campaign run. See the [release notes](releases/v0.2.6-steamdeck-preview6/release-notes.md) for precise acceptance limits. Friends/follow and proximity voice remain future work.
 
 ## Building NxHalo
 
