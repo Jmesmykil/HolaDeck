@@ -1,8 +1,8 @@
 # HaloDeck — Unified native Halo for Steam Deck & Linux
 
-## Current release: Unified Preview 2.8 (pre-release)
+## Current release: Unified Preview 2.8.1 (pre-release candidate)
 
-[Download the v0.2.8 prerelease](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.8-steamdeck-unified8). It includes the runtime archive, exact source ZIP, supported-mods guide, release notes, manifest and SHA256SUMS. One executable includes campaign, online co-op, native multiplayer, custom CE map setup, host character presets and separate server filters. Earlier releases remain available for rollback.
+[Download the v0.2.8.1 prerelease](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.8.1-steamdeck-unifiedhotfix). It includes the updated runtime archive, source snapshot, supported-mods guide, release notes, manifest and SHA256SUMS. One executable includes campaign, online co-op, native multiplayer, custom CE map setup, host character presets and separate server filters. Preview 2.8 remains available for rollback.
 
 The creator's main Deck app remains `/home/deck/Games/HaloCE`; its executable, launcher and saves have pre-upgrade backups. Supply your own Xbox maps in `assets/maps`. Launch `launch_halo.sh` natively from Steam, with Proton off. Saves remain `~/.local/share/halo-linux`.
 
@@ -14,7 +14,7 @@ The creator's main Deck app remains `/home/deck/Games/HaloCE`; its executable, l
 - **Host profiles V21 / V20 / V11:** selected in the same executable. V11 is multiplayer-only. Native room joins select the advertised profile in-process.
 - **Host Match Character:** selects a map-local biped for server-created multiplayer/co-op player units. Missing bipeds retain the map standard. Stock multiplayer maps do not gain campaign assets automatically.
 
-CE609 maps load directly through the native importer. Import owner-supplied `bitmaps.map`, `sounds.map` and `loc.map` companions into `assets/maps/ce` when referenced. OpenSauce `.yelo`, Chimera Lua/DLL and other engine extensions require individual native ports. Classic Halo PC/CE address snapshots stay separately listed and require a classic protocol client. [Supported content and mod path](releases/v0.2.8-steamdeck-unified8/SUPPORTED-MODS.md).
+CE609 maps load directly through the native importer. Import owner-supplied `bitmaps.map`, `sounds.map` and `loc.map` companions into `assets/maps/ce` when referenced. OpenSauce `.yelo`, Chimera Lua/DLL and other engine extensions require individual native ports. Classic Halo PC/CE address snapshots stay separately listed and require a classic protocol client. [Supported content and mod path](releases/v0.2.8.1-steamdeck-unifiedhotfix/SUPPORTED-MODS.md).
 
 ## Authoritative unified source
 
@@ -30,7 +30,9 @@ Use 32-bit SDL3; the build notes describe the SteamOS libm shim. A compatible ow
 
 ## Verification
 
-The final Linux executable is installed on the Deck and the file hash is verified; the already-running game process remains on 5baaae until the next launch. Runtime dialog redraw and a clean world frame were verified, but stock modal styling has not received human physical acceptance. Controller routing selects one controller, favors directly connected PlayStation controllers over built-in Deck controls, and preserves split-screen assignments. Held menu navigation repeats at 350ms. The creator confirmed PS5 gameplay and menu controls on the e09 controller build. The latest package retains that input source. Runtime dialog redraw is present; physical human acceptance of stock modal styling remains open. Physical captures show the new content/network menus; map archive fixtures and native linking passed. A reproduced keepalive stack overwrite was fixed with bounded packet scratch storage and independently reviewed. Private hosts initialized under all three profiles after the fix, but synthetic joins did not succeed. Death Island reached native gameplay on Omarchy with owner-supplied CE resources. Sustained two-client interoperability, alternate-character matches, full download/join and controller moderation remain unverified. Friends and voice remain future work. [Release notes](releases/v0.2.8-steamdeck-unified8/release-notes.md).
+Preview 2.8.1 binary SHA-256: `d7eb374e9f1c3dc010f18445b6c97092722a6d96e18ded9800b8cfea0330e1c6`. It passed a 22-second native Omarchy Death Island smoke (actor loaded, ticks 31–393, health 1), production missing-map guard cases and a 12-second native missing-CE host probe without relaunch/crash. TLS production 32-bit cleanup checks and two-thread HTTPS CA downloads passed. The 2.8.1 build is not yet installed or running on the Deck; the last verified Deck install hash was Preview 2.8 `2154e51b9e80077d71fd3102fe4d375fe5ef70a8a0009f866c7bb5bc23488a65`; the latest device check found no Halo process running.
+
+Prior Deck runs on 2.8 confirmed custom-map download/load/join and both tested controller inputs. Logged multiplayer evidence includes a profile 21 campaign join-in-progress on b30/a30 at 00:33:46/01:27:16, a profile 11 Blood Gulch 28-player session from 07:58:17 to a network disconnect at 08:00:49, and an Infinity CE retry followed by profile 20 loading at 08:37:32 on October 7. These runs do not establish every feature on 2.8.1. The invalid menu index/widget root cause remains unresolved; current instrumentation only records bounded diagnostics. Full 128-player acceptance, live preset matches, Friends and voice remain unverified. [2.8.1 release notes](releases/v0.2.8.1-steamdeck-unifiedhotfix/release-notes.md).
 
 ## Credits and licenses
 
