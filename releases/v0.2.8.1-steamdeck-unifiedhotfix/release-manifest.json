@@ -6,9 +6,9 @@
   "single_executable": true,
   "binary_sha256": "d7eb374e9f1c3dc010f18445b6c97092722a6d96e18ded9800b8cfea0330e1c6",
   "source_sha256": "c8c9a73ccd44bf89f3c8374408bc16704c634f53c897686f0e0e3db3bba4e9ca",
-  "deck_2_8_1_installed": false,
+  "deck_2_8_1_installed": true,
   "deck_2_8_1_running": false,
-  "latest_verified_deck_binary_sha256": "2154e51b9e80077d71fd3102fe4d375fe5ef70a8a0009f866c7bb5bc23488a65",
+  "latest_verified_deck_binary_sha256": "d7eb374e9f1c3dc010f18445b6c97092722a6d96e18ded9800b8cfea0330e1c6",
   "rollback_preserved": true,
   "acceptance": {
     "native_omarchy_deathisland_smoke_seconds": 22,
@@ -51,11 +51,13 @@
       "sha256": "0d56adf0e4d3e99d235a8b23d41040a91b5c71e1eac8783c9853206deec9e58d"
     },
     "release-notes.md": {
-      "bytes": 2610,
-      "sha256": "72fece02f07cc118c5a4772d69616d7fe567d0f5f0030c4d7009d18a452803af"
+      "bytes": 2773,
+      "sha256": "87c1b38175d3a18cc2477d7bfa76e8b17b8dd139ffcbafaee84be2de274fb492"
     }
   },
-  "deck_running_process_at_last_check": false,
+  "deck_running_process_at_last_check": true,
   "deck_2154_missing_map_rotation_dashboard_exit_observed": true,
-  "deck_2_8_1_rotation_verified": false
+  "deck_2_8_1_rotation_verified": false,
+  "deck_2_8_1_installed_binary_sha256": "d7eb374e9f1c3dc010f18445b6c97092722a6d96e18ded9800b8cfea0330e1c6",
+  "latest_running_deck_binary_sha256": "2154e51b9e80077d71fd3102fe4d375fe5ef70a8a0009f866c7bb5bc23488a65"
 }
