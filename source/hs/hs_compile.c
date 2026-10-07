@@ -412,8 +412,10 @@ symbols in this file:
 #include "cache/cache_files.h"
 #include "ai/ai_script.h"
 #include "hs/hs.h"
+#include "hs/hs_library_internal.h"
 #include "hs/hs_library_internal_compile.h"
 #include "hs/hs_scenario_definitions.h"
+#include "interface/hud_definitions.h"
 #include "interface/interface.h"
 #include "memory/data.h"
 #include "scenario/scenario.h"
@@ -497,12 +499,6 @@ struct hs_tokenizer
 typedef char verify_hs_syntax_node_size[
 	sizeof(struct hs_syntax_node) == 0x14 ? 1 : -1];
 
-struct hud_globals_definition
-{
-	byte reserved000[0x160];
-	struct tag_block waypoint_arrows;
-};
-
 struct hud_message_text_definition
 {
 	byte reserved000[0x20];
@@ -518,6 +514,7 @@ typedef char verify_hs_compile_compiled_source_size_offset[
 	offsetof(struct hs_compile_globals, compiled_source_size) == 0x04 ? 1 : -1];
 typedef char verify_hs_compile_compiled_source_offset[
 	offsetof(struct hs_compile_globals, compiled_source) == 0x08 ? 1 : -1];
+#ifndef HALO_64BIT
 typedef char verify_hs_compile_string_constant_buffer_offset[
 	offsetof(struct hs_compile_globals, string_constant_buffer) == 0x0C ? 1 : -1];
 typedef char verify_hs_compile_error_since_initialize_offset[
@@ -529,6 +526,7 @@ typedef char verify_hs_compile_compiling_scenario_offset[
 typedef char verify_hs_compile_globals_size[
 	sizeof(struct hs_compile_globals) == 0x12C ? 1 : -1];
 
+#endif
 /* ---------- prototypes */
 
 static boolean hs_parse_scenario_datum(
@@ -925,7 +923,7 @@ long hs_compile_expression(
 				0xA6,
 				global_scenario_get()->hs_string_constants.size>=HS_MAXIMUM_DYNAMIC_SOURCE_DATA_BYTES);
 			source_offset = global_scenario_get()->hs_string_constants.size - HS_MAXIMUM_DYNAMIC_SOURCE_DATA_BYTES;
-			hs_compile_globals.compiled_source = global_scenario_get()->hs_string_constants.address;
+			hs_compile_globals.compiled_source = xbox_pointer(global_scenario_get()->hs_string_constants.address);
 		}
 		else
 		{
@@ -1093,7 +1091,7 @@ static void hs_compile_finish(
 
 	if (success)
 	{
-		hs_compile_globals.string_constant_buffer = scenario->hs_string_constants.address;
+		hs_compile_globals.string_constant_buffer = xbox_pointer(scenario->hs_string_constants.address);
 		hs_compile_globals.string_constant_buffer_offset = 0;
 		hs_compile_globals.string_constant_buffer_size = hs_compile_globals.compiled_source_size;
 
@@ -1404,7 +1402,12 @@ static boolean hs_parse_string(
 		0x61F,
 		expression->constant_type==expression->type);
 
+#ifdef HALO_64BIT
+	/* script values are 32 bits: strings are Xbox addresses */
+	expression->data = xbox_address(hs_compile_globals.compiled_source + expression->source_offset);
+#else
 	expression->data = (long)(hs_compile_globals.compiled_source + expression->source_offset);
+#endif
 
 	return TRUE;
 }
@@ -1461,7 +1464,7 @@ static boolean hs_parse_tag_reference(
 			reference_index,
 			struct hs_reference);
 		if (csstrcmp(
-			reference->reference.name,
+			xbox_pointer(reference->reference.name),
 			hs_compile_globals.compiled_source + expression->source_offset) == 0 &&
 			reference->reference.group_tag == group_tag)
 		{
@@ -1842,7 +1845,7 @@ static boolean hs_parse_navpoint(
 		result = hs_parse_scenario_datum(
 			expression_index,
 			0,
-			&hud_globals->waypoint_arrows,
+			&hud_globals->waypoint.arrows,
 			hud_waypoint_arrow_size);
 	}
 
@@ -2428,21 +2431,21 @@ static boolean hs_parse_nonprimitive(
 }
 
 boolean hs_compile_postprocess(
-	char const **error_message,
-	char const **error_source)
+	char const **error_message_pointer,
+	char const **error_source_pointer)
 {
 	boolean success = TRUE;
 	long expression_index;
 	short resolved_type;
 	struct hs_script *script;
 
-	hs_compile_globals.compiled_source = global_scenario_get()->hs_string_constants.address;
+	hs_compile_globals.compiled_source = xbox_pointer(global_scenario_get()->hs_string_constants.address);
 	hs_compile_globals.compiled_source_size =
 		global_scenario_get()->hs_string_constants.size - HS_MAXIMUM_DYNAMIC_SOURCE_DATA_BYTES;
 	hs_compile_globals.error = NULL;
 	hs_compile_globals.variables_predetermined = TRUE;
-	*error_message = NULL;
-	*error_source = NULL;
+	*error_message_pointer = NULL;
+	*error_source_pointer = NULL;
 
 	for (expression_index = data_next_index(hs_syntax_data, NONE);
 		success && expression_index != NONE;
@@ -2541,9 +2544,9 @@ boolean hs_compile_postprocess(
 
 	if (!success)
 	{
-		*error_message = hs_compile_globals.error;
+		*error_message_pointer = hs_compile_globals.error;
 		if (hs_compile_globals.error_offset != NONE)
-			*error_source = hs_compile_globals.compiled_source + hs_compile_globals.error_offset;
+			*error_source_pointer = hs_compile_globals.compiled_source + hs_compile_globals.error_offset;
 	}
 
 	hs_compile_globals.compiled_source = NULL;
@@ -2797,7 +2800,11 @@ boolean hs_macro_function_parse(
 		result && parameter_index < definition->parameter_count && argument_expression_index != NONE;
 		parameter_index++)
 	{
+#ifdef HALO_64BIT
+		if (hs_parse(argument_expression_index, HS_FUNCTION_PARAMETER_TYPE(definition, parameter_index)))
+#else
 		if (hs_parse(argument_expression_index, definition->parameter_types[parameter_index]))
+#endif
 		{
 			struct hs_syntax_node *argument = hs_syntax_get(argument_expression_index);
 

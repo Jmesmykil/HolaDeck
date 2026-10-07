@@ -298,7 +298,7 @@ boolean datastore_read(
 	void *data)
 {
 	struct file_reference file_ref;
-	boolean success;
+	boolean success = FALSE;
 	unsigned long datastore_size = 0;
 	struct datastore *datastore;
 

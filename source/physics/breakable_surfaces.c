@@ -215,7 +215,7 @@ void breakable_surface_damage_area_of_effect(
 
 		if (cutoff_radius > 4.0f)
 		{
-			error(_error_silent, "WARNING: area of effect breakable surface damage with radius %d", cutoff_radius);
+			error(_error_silent, "WARNING: area of effect breakable surface damage with radius %f", cutoff_radius);
 		}
 
 		for (breakable_surface_index = 0; breakable_surface_index < structure_bsp->breakable_surfaces.count; breakable_surface_index++)

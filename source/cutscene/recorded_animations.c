@@ -181,7 +181,7 @@ static struct data_array *animation_threads;
 boolean debug_recording = FALSE;
 static struct animation_thread_debug *animation_threads_debug = NULL;
 
-struct animation_playback current_playback =
+static struct animation_playback current_playback =
 {
 	recorded_animation_initialize_event_stream,
 	recorded_animation_apply_event_stream
@@ -470,7 +470,7 @@ void recorded_animation_verify(
 	long ticks_left;
 	boolean finished;
 
-	stream = animation->event_stream.address;
+	stream = xbox_pointer(animation->event_stream.address);
 	playback_stream = stream;
 	size = animation->event_stream.size;
 	ticks_left = (word)animation->length_in_ticks;

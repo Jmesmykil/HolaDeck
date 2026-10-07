@@ -68,7 +68,7 @@ symbols in this file:
 
 /* ---------- prototypes */
 
-void _byte_swap_data(
+static void _byte_swap_data(
 	struct byte_swap_definition *definition,
 	void *data,
 	byte_swap_code *codes,
@@ -179,7 +179,7 @@ void byte_swap_memory(
 	return;
 }
 
-void _byte_swap_data(
+static void _byte_swap_data(
 	struct byte_swap_definition *definition,
 	void *data,
 	byte_swap_code *codes,
@@ -334,6 +334,12 @@ next_iteration:
 	}
 	while (repeat_count!=0);
 
+/* A zero array count reaches done with code_index never assigned, and it is stored
+ * through next_code. Not reached with January's code tables: all 15 _begin_bs_array
+ * entries in cachebeta.exe's data sections have count 1 (scan of every aligned
+ * _begin_bs_array word from .rdata onwards), and every byte_swap_definition in the
+ * source points at a static table. Source-policy approval pending (2026-09-27 audit).
+ */
 done:
 	if (size)
 		*size = offset;
@@ -348,14 +354,26 @@ long byte_swap_codes_size(
 	byte_swap_code *codes)
 {
 	struct byte_swap_definition definition;
+#ifdef HALO_64BIT
+	int size;
+	int next_code;
+#endif
 
 	definition.name = name;
 	definition.size = 0;
 	definition.codes = codes;
 	definition.signature = BYTE_SWAP_DEFINITION_SIGNATURE;
+#ifdef HALO_64BIT
+	_byte_swap_data(&definition, NULL, codes, &size, &next_code);
+#else
 	_byte_swap_data(&definition, NULL, codes, (long *)&name, (long *)&codes);
+#endif
 
+#ifdef HALO_64BIT
+	return size;
+#else
 	return (long)name;
+#endif
 }
 
 void byte_swap_data(

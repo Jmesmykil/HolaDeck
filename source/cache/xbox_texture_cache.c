@@ -98,11 +98,9 @@ symbols in this file:
 #include "cseries/errors.h"
 #include "cseries/sort.h"
 #include "bitmaps/bitmap_group.h"
-#include "bitmaps/bitmaps_internal.h"
-#include "bitmaps/bitmaps_mipmap.h"
+#include "bitmaps/bitmaps.h"
 #include "cache/cache_files.h"
 #include "cache/texture_cache.h"
-#include "cache/xbox_texture_cache.h"
 #include "cache/physical_memory_map.h"
 #include "interface/interface.h"
 #include "interface/terminal.h"
@@ -127,7 +125,9 @@ symbols in this file:
 
 enum
 {
-	XBOX_TEXTURE_CACHE_PAGE_COUNT = 0x580,
+	/* (the native builds' size: halo_port_capacity.h; the Xbox's 0x580
+	pages, 0x1600000 bytes) */
+	XBOX_TEXTURE_CACHE_PAGE_COUNT = HALO_PORT_TEXTURE_CACHE_SIZE >> 14,
 	XBOX_TEXTURE_CACHE_PAGE_SIZE_BITS = 14,
 	XBOX_TEXTURE_CACHE_PAGE_SIZE = 1 << XBOX_TEXTURE_CACHE_PAGE_SIZE_BITS,
 	XBOX_TEXTURE_CACHE_STEAL_GUARD_SIZE = 0x104000,
@@ -135,7 +135,7 @@ enum
 		XBOX_TEXTURE_CACHE_PAGE_COUNT -
 		2 * (XBOX_TEXTURE_CACHE_STEAL_GUARD_SIZE / XBOX_TEXTURE_CACHE_PAGE_SIZE),
 	XBOX_TEXTURE_CACHE_ENTRY_SIZE = 0x20,
-	XBOX_TEXTURE_CACHE_SIZE = 0x1600000,
+	XBOX_TEXTURE_CACHE_SIZE = HALO_PORT_TEXTURE_CACHE_SIZE,
 	XBOX_TEXTURE_CACHE_PROTECTION = 0x404,
 };
 
@@ -222,6 +222,7 @@ typedef char verify_xbox_texture_cache_textures_offset[
 	offsetof(
 		struct xbox_texture_cache_globals,
 		textures) == 0 ? 1 : -1];
+#ifndef HALO_64BIT
 typedef char verify_xbox_texture_cache_base_address_offset[
 	offsetof(
 		struct xbox_texture_cache_globals,
@@ -236,6 +237,7 @@ typedef char verify_xbox_texture_cache_stolen_memory_offset[
 		stolen_memory) == 0xC ? 1 : -1];
 typedef char verify_xbox_texture_cache_globals_size[
 	sizeof(struct xbox_texture_cache_globals) == 0x10 ? 1 : -1];
+#endif
 typedef char verify_xbox_texture_cache_texture_loaded_offset[
 	offsetof(
 		struct xbox_texture_cache_texture,
@@ -248,12 +250,14 @@ typedef char verify_xbox_texture_cache_texture_bitmap_offset[
 	offsetof(
 		struct xbox_texture_cache_texture,
 		bitmap) == 0x8 ? 1 : -1];
+#ifndef HALO_64BIT
 typedef char verify_xbox_texture_cache_texture_hardware_format_offset[
 	offsetof(
 		struct xbox_texture_cache_texture,
 		hardware_format) == 0xC ? 1 : -1];
 typedef char verify_xbox_texture_cache_texture_size[
 	sizeof(struct xbox_texture_cache_texture) == 0x20 ? 1 : -1];
+#endif
 /* ---------- prototypes */
 
 static boolean texture_cache_locked_block_proc(
@@ -262,6 +266,12 @@ static void texture_cache_delete_block_proc(
 	long block_index);
 static const char *texture_cache_name_block_proc(
 	long block_index);
+long bitmap_format_to_d3d_format(
+	short format,
+	word flags);
+long bitmap_format_to_d3d_linear_format(
+	short format,
+	word flags);
 static boolean compare(
 	struct bitmap_data *first,
 	struct bitmap_data *second);
@@ -369,14 +379,14 @@ void texture_cache_bitmap_new(
 		!TEST_FLAG(bitmap->flags, _bitmap_cached_bit));
 	SET_FLAG(bitmap->flags, _bitmap_cached_bit, TRUE);
 	bitmap->cache_block_index = NONE;
-	bitmap->base_address = NULL;
-	bitmap->hardware_format = NULL;
+	bitmap->base_address = XBOX_NULL;
+	bitmap->hardware_format = XBOX_NULL;
 	bitmap_group = bitmap_group_get(bitmap_tag_index);
 	bitmap->pixels_offset += bitmap_group->pixel_data.file_offset;
 	bitmap->pixels_size = bitmap_get_pixel_data_size(bitmap);
 	bitmap->tag_index = bitmap_tag_index;
-	bitmap->base_address = NULL;
-	bitmap->hardware_format = NULL;
+	bitmap->base_address = XBOX_NULL;
+	bitmap->hardware_format = XBOX_NULL;
 	bitmap->cache_block_index = NONE;
 
 	return;
@@ -398,7 +408,7 @@ void texture_cache_bitmap_delete(
 		}
 		SET_FLAG(bitmap->flags, _bitmap_cached_bit, FALSE);
 		bitmap->cache_block_index = NONE;
-		bitmap->base_address = NULL;
+		bitmap->base_address = XBOX_NULL;
 	}
 
 	return;
@@ -578,7 +588,7 @@ static void texture_cache_delete_block_proc(
 		0x187,
 		texture->bitmap->cache_block_index==block_index);
 	texture->bitmap->cache_block_index = NONE;
-	texture->bitmap->base_address = NULL;
+	texture->bitmap->base_address = XBOX_NULL;
 	datum_delete(
 		xbox_texture_cache_globals.textures,
 		block_index);
@@ -628,8 +638,36 @@ static void texture_cache_initialize_hardware_format(
 			D3DFORMAT_BORDERSOURCE_COLOR |
 			D3DFORMAT_DMACHANNEL_A;
 		texture->Size = 0;
+#ifdef HALO_CUSTOM_EDITION
+		/* port: a Custom Edition map's bitmap has its pixels as Halo PC lays
+		them out: uploaded as they are, not rearranged as the Xbox's */
+		{
+			extern boolean cache_file_tags_are_ce(void);
+
+			if (cache_file_tags_are_ce())
+				texture->Common |= D3DCOMMON_PORT_PC_LAYOUT;
+		}
+#endif
 	}
-	IDirect3DBaseTexture8_Register(texture, bitmap->base_address);
+#ifdef HALO_CUSTOM_EDITION
+	/* port: a Custom Edition map's HUD meter, its channels Halo PC's
+	(port/linux/game/ce_hud.c) */
+	{
+		extern boolean ce_hud_bitmap_is_meter(void const *bitmap);
+
+		if (ce_hud_bitmap_is_meter(bitmap))
+			texture->Common |= D3DCOMMON_PORT_PC_METER;
+	}
+	/* port: a Custom Edition map's model multipurpose map, its channels
+	Halo PC's (port/linux/game/ce_models.c) */
+	{
+		extern boolean ce_models_bitmap_is_multipurpose(void const *bitmap);
+
+		if (ce_models_bitmap_is_multipurpose(bitmap))
+			texture->Common |= D3DCOMMON_PORT_PC_MULTIPURPOSE;
+	}
+#endif
+	IDirect3DBaseTexture8_Register(texture, xbox_pointer(bitmap->base_address));
 
 	return;
 }
@@ -679,7 +717,12 @@ void texture_cache_new(
 	xbox_texture_cache_globals.textures = data_new(
 		"xbox texture",
 		XBOX_TEXTURE_CACHE_PAGE_COUNT,
+#ifdef HALO_64BIT
+		/* the entry holds a native bitmap pointer */
+		MAX(XBOX_TEXTURE_CACHE_ENTRY_SIZE, sizeof(struct xbox_texture_cache_texture)));
+#else
 		XBOX_TEXTURE_CACHE_ENTRY_SIZE);
+#endif
 	match_vassert(
 		"c:\\halo\\SOURCE\\cache\\xbox_texture_cache.c",
 		98,
@@ -739,7 +782,11 @@ static boolean texture_cache_start_loading_bitmap(
 		struct xbox_texture_cache_texture *texture;
 
 		base_address = xbox_texture_cache_globals.base_address +
+#ifdef HALO_64BIT
+			lruv_block_get_address(
+#else
 			(unsigned long)lruv_block_get_address(
+#endif
 				xbox_texture_cache_globals.cache,
 				cache_block_index);
 		new_texture_index = datum_new_at_index(
@@ -753,7 +800,7 @@ static boolean texture_cache_start_loading_bitmap(
 			431,
 			new_texture_index==cache_block_index);
 		bitmap->cache_block_index = cache_block_index;
-		bitmap->base_address = base_address;
+		bitmap->base_address = xbox_address(base_address);
 		texture->bitmap = bitmap;
 		texture_cache_initialize_hardware_format(bitmap, &texture->hardware_format);
 		texture->read_request_handle = cache_file_read(
@@ -963,22 +1010,30 @@ void *_texture_cache_bitmap_get_hardware_format(
 	}
 	else
 	{
-		hardware_format = bitmap->hardware_format;
+		hardware_format = xbox_pointer(bitmap->hardware_format);
 	}
 
 	if (block && !hardware_format)
 	{
 		if (system_milliseconds() - texture_cache_last_failure_time > 10000)
 		{
-			terminal_printf(
-				global_real_argb_purple,
-				"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+			/* (port: chatter, shown as config.toml's game.console_log says) */
+			if (terminal_shows(_terminal_message_chatter))
+			{
+				terminal_printf(
+					global_real_argb_purple,
+					"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+			}
 			error(
 				_error_silent,
 				"YOU GOT STABBED!!!! double-click \"GETSTABBED.BAT\" on your PC now!!!");
-			terminal_printf(
-				global_real_argb_purple,
-				"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+			/* (port: chatter, shown as config.toml's game.console_log says) */
+			if (terminal_shows(_terminal_message_chatter))
+			{
+				terminal_printf(
+					global_real_argb_purple,
+					"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+			}
 			lruv_debug_to_file(
 				"d:\\stabbed.txt",
 				tag_get_name(bitmap->tag_index),

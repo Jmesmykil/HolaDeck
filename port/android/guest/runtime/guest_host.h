@@ -66,6 +66,16 @@ int host_sdl_gl_make_current(unsigned int window, unsigned int context);
 int host_sdl_gl_set_swap_interval(int interval);
 int host_sdl_gl_swap_window(unsigned int window);
 int host_sdl_poll_event(void *event);
+int host_sdl_set_clipboard_text(const char *text);
+void host_sdl_get_clipboard_text(char *buffer, unsigned int size);
+/* the keyboard's keys by name (the controls' bindings, xinput_sdl.c) */
+void host_sdl_scancode_name(int scancode, char *buffer, unsigned int size);
+int host_sdl_scancode_from_name(const char *name);
+int host_sdl_show_toast(const char *message, int duration, int gravity, int x, int y);
+int host_sdl_show_simple_message_box(unsigned int flags, const char *title, const char *message);
+int host_sdl_show_message_box(unsigned int flags, const char *title, const char *message, int count,
+	const unsigned int *button_flags, const int *button_ids, const unsigned int *button_texts);
+int host_sdl_open_url(const char *url);
 int host_sdl_get_gamepads(unsigned int *ids, int capacity);
 unsigned int host_sdl_open_gamepad(unsigned int id);
 unsigned int host_sdl_gamepad_from_id(unsigned int id);

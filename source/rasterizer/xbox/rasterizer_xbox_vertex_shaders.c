@@ -11,6 +11,7 @@ symbols in this file:
 /* ---------- headers */
 
 #include "cseries.h"
+#include "cseries/errors.h"
 #include "rasterizer_xbox_vertex_shaders.h"
 
 /* ---------- constants */
@@ -30,10 +31,16 @@ symbols in this file:
 34,628-byte read-only payload.  These are immutable Xbox shader instruction
 tokens, represented as dwords so the generated data remains inspectable and
 the compiler reproduces the original little-endian bytes. */
-unsigned long const vertex_shader_code[] =
+#if defined(HALO_PUBLIC_EXTERNAL_SHADERS)
+/* This buffer contains no retail instruction tokens in the distributed ELF. */
+#define PUBLIC_SHADER_BYTES 34628u
+static unsigned long vertex_shader_code[PUBLIC_SHADER_BYTES / 4u];
+#else
+static unsigned long const vertex_shader_code[] =
 {
 #include "rasterizer_xbox_vertex_shaders_data.inc"
 };
+#endif
 
 struct vertex_shader_entry vertex_shader_table[NUMBER_OF_VERTEX_SHADERS] =
 {
@@ -109,3 +116,51 @@ struct vertex_shader_entry vertex_shader_table[NUMBER_OF_VERTEX_SHADERS] =
 /* ---------- public code */
 
 /* ---------- private code */
+
+#if defined(HALO_PUBLIC_EXTERNAL_SHADERS)
+#include <stdio.h>
+#include <string.h>
+
+/* Load once, before any CreateVertexShader call. On failure the caller aborts
+   rasterizer initialization; zeros are never submitted as shader programs. */
+boolean rasterizer_vertex_shader_assets_load(void)
+{
+    static int loaded;
+    FILE *file;
+    unsigned char *bytes = (unsigned char *)vertex_shader_code;
+    unsigned long crc = 0xFFFFFFFFu;
+    unsigned long index;
+    int bit, extra, failed;
+    size_t count;
+    if (loaded) return loaded > 0;
+    loaded = -1;
+    file = fopen("d:\\maps\\shaders.bin", "rb");
+    if (!file)
+    {
+        error(2, "PUBLIC ASSET ERROR: maps/shaders.bin missing or unreadable. Rerun the Halo CE asset importer with your supported retail game, then restart.");
+        return FALSE;
+    }
+    count = fread(bytes, 1, PUBLIC_SHADER_BYTES, file);
+    extra = fgetc(file);
+    failed = ferror(file);
+    if (fclose(file) != 0) failed = 1;
+    if (count == PUBLIC_SHADER_BYTES && extra == EOF && !failed)
+    {
+        for (index = 0; index < PUBLIC_SHADER_BYTES; ++index)
+        {
+            crc ^= bytes[index];
+            for (bit = 0; bit < 8; ++bit)
+                crc = (crc >> 1) ^ ((crc & 1u) ? 0xEDB88320u : 0u);
+        }
+        crc ^= 0xFFFFFFFFu;
+        if (crc == 0x60EC8BA1u)
+        {
+            loaded = 1;
+            return TRUE;
+        }
+    }
+    memset(bytes, 0, PUBLIC_SHADER_BYTES);
+    error(2, "PUBLIC ASSET ERROR: maps/shaders.bin has invalid length, checksum or read status. Rerun the Halo CE asset importer with your supported retail game, then restart.");
+    return FALSE;
+}
+#endif

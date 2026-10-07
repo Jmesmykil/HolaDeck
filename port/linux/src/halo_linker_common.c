@@ -1,20 +1,19 @@
 /*
 HALO_LINKER_COMMON.C
 
-Game definitions the Linux link needs that no reconstructed translation unit
-provides yet. Nothing here is decompiled game code or earns matching credit;
-every definition is weak, so the genuine one takes over automatically once
-its owning unit is reconstructed.
+Game definitions the link needs that no reconstructed translation unit
+provides yet. Nothing here is decompiled game code; every definition is
+weak, so the genuine one takes over automatically once its owning unit is
+reconstructed.
 
 Globals: in the January image these are tentative definitions that the
-linker pooled into one COMMON block (csplit's source/linker_common; see
-docs/linker_common_comparison_base_20260922.md). COMMON storage is zero
-filled, so each is zeroed storage here. The sizes come from the spacing of
-the symbols in config/symbols.json and so are upper bounds of the real
-sizes; the declared type is noted beside each.
+linker pooled into one COMMON block. COMMON storage is zero filled, so each
+is zeroed storage here. The sizes come from the spacing of the symbols in
+the January image and so are upper bounds of the real sizes; the declared
+type is noted beside each.
 
 Functions: fast_ftol_C and main_crash are Halo functions that are still
-missing from the reconstruction (docs/xbox_link_probe_20260924.md).
+missing from the reconstruction.
 */
 
 #include "platform.h"
@@ -24,8 +23,14 @@ missing from the reconstruction (docs/xbox_link_probe_20260924.md).
 
 /* ---------- pooled COMMON globals */
 
+#ifdef HALO_64BIT
+/* (twice the Xbox's size: many of them hold pointers) */
+#define HALO_COMMON(name, size) \
+	__attribute__((weak, aligned(16))) unsigned char name[(size) * 2]
+#else
 #define HALO_COMMON(name, size) \
 	__attribute__((weak, aligned(16))) unsigned char name[size]
+#endif
 
 HALO_COMMON(ai_globals, 12); /* struct ai_globals_data *ai_globals */
 HALO_COMMON(antenna_data, 12); /* struct data_array *antenna_data */
@@ -99,7 +104,12 @@ HALO_COMMON(debug_sprites, 24); /* byte debug_sprites[] */
 HALO_COMMON(debug_trigger_volumes, 1); /* boolean debug_trigger_volumes */
 HALO_COMMON(device_groups_data, 24); /* struct data_array *device_groups_data */
 HALO_COMMON(director_camera_scripted, 4); /* struct director_scripting_globals *director_camera_scripted */
+#ifdef HALO_CUSTOM_EDITION
+/* (eight channel types, not four: sound_dsound_xbox.c) */
+HALO_COMMON(dsound_globals, 30924 + 8); /* struct dsound_globals dsound_globals */
+#else
 HALO_COMMON(dsound_globals, 30924); /* struct dsound_globals dsound_globals */
+#endif
 HALO_COMMON(effect_data, 4); /* struct data_array *effect_data */
 HALO_COMMON(effect_location_data, 4); /* struct data_array *effect_location_data */
 HALO_COMMON(error_globals, 2080); /* struct error_global_data error_globals */

@@ -128,10 +128,12 @@ symbols in this file:
 #include "interface/hud_draw.h"
 #include "bitmaps/bitmap_color_conversion.h"
 #include "interface/hud.h"
+#include "interface/hud_definitions.h"
 #include "interface/hud_messaging.h"
 #include "interface/interface.h"
 #include "interface/ui_widget.h"
 #include "items/item_definitions.h"
+#include "memory/data.h"
 #include "rasterizer/rasterizer.h"
 #include "render/render.h"
 #include "render/render_debug.h"
@@ -145,6 +147,9 @@ symbols in this file:
 #include "text/unicode.h"
 
 #include <stddef.h>
+#ifdef HALO_64BIT
+#include "memory/data.h"
+#endif
 
 /* ---------- constants */
 
@@ -291,17 +296,6 @@ struct hud_state_message_element
 	byte data;
 };
 
-struct icon_hud_element_definition
-{
-	short sequence_index;
-	short width_offset;
-	point2d offset;
-	pixel32 color;
-	char frame_rate;
-	byte flags;
-	short text_index;
-};
-
 struct hud_state_message_text_info_definition
 {
 	short string_index;
@@ -343,13 +337,6 @@ struct hud_message_text_definition
 	long unused2C[21];
 };
 
-struct hud_scripted_globals_definition
-{
-	boolean show_hud;
-	boolean show_hud_help_text;
-	byte reserved2[2];
-};
-
 struct hud_timer_data_definition
 {
 	long reference_time;
@@ -359,22 +346,6 @@ struct hud_timer_data_definition
 	short corner;
 	boolean paused;
 	boolean enabled;
-};
-
-struct hud_absolute_placement_definition
-{
-	short corner;
-	short pad;
-	long unused[8];
-};
-
-struct hud_placement_definition
-{
-	point2d offset;
-	real_vector2d scale;
-	short multiplayer_scaling_flags;
-	short pad;
-	long unused[5];
 };
 
 struct hud_objective_runtime_definition
@@ -394,27 +365,6 @@ struct hud_messaging_globals_definition
 	struct hud_state_message_definition *help_message;
 	struct hud_objective_runtime_definition objective;
 	struct hud_timer_data_definition timer;
-};
-
-struct hud_color_definition
-{
-	unsigned long color;
-	unsigned long flash_color;
-	real flash_period;
-	real flash_delay;
-	short number_of_flashes;
-	word flash_flags;
-	real flash_length;
-	unsigned long disabled_color;
-	union
-	{
-		long unused;
-		struct
-		{
-			short up_ticks;
-			short fade_ticks;
-		} objective;
-	} custom;
 };
 
 struct number_hud_element_definition
@@ -441,40 +391,6 @@ struct hud_number_definition
 	long unused[19];
 };
 
-struct hud_timer_definition
-{
-	struct hud_color_definition color;
-	struct hud_color_definition time_up_color;
-	long unused[10];
-};
-
-struct hud_messaging_parameters_definition
-{
-	struct hud_absolute_placement_definition absolute_placement;
-	struct hud_placement_definition placement;
-	struct tag_reference single_player_font;
-	struct tag_reference multi_player_font;
-	real up_time;
-	real fade_time;
-	real_argb_color state_color;
-	real_argb_color text_color;
-	real spacing;
-	struct tag_reference hud_item_messages;
-	struct tag_reference messaging_icons;
-	struct tag_reference alternate_icon_text;
-	struct tag_block button_icons;
-	struct hud_color_definition color;
-	struct tag_reference hud_messages;
-	struct hud_color_definition objective_color;
-};
-
-struct hud_globals_definition
-{
-	struct hud_messaging_parameters_definition messaging;
-	byte reserved120[0x240];
-	struct hud_timer_definition timer_definition;
-};
-
 typedef char hud_timer_data_size_assert[
 	sizeof(struct hud_timer_data_definition) == 0x10 ? 1 : -1];
 typedef char hud_message_valid_offset_assert[
@@ -483,6 +399,7 @@ typedef char hud_message_size_assert[
 	sizeof(struct hud_message_definition) == 0x8C ? 1 : -1];
 typedef char hud_state_message_text_info_size_assert[
 	sizeof(struct hud_state_message_text_info_definition) == 4 ? 1 : -1];
+#ifndef HALO_64BIT
 typedef char hud_state_message_info_size_assert[
 	sizeof(union hud_state_message_info_definition) == 4 ? 1 : -1];
 typedef char hud_state_message_runtime_size_assert[
@@ -495,8 +412,10 @@ typedef char hud_state_message_runtime_valid_offset_assert[
 	offsetof(struct hud_state_message_runtime_definition, valid) == 0x228 ? 1 : -1];
 typedef char hud_state_message_runtime_is_text_flags_offset_assert[
 	offsetof(struct hud_state_message_runtime_definition, is_text_flags) == 0x229 ? 1 : -1];
+#endif
 typedef char hud_messaging_datum_state_message_offset_assert[
 	offsetof(struct hud_messaging_datum_definition, state_message) == 0x230 ? 1 : -1];
+#ifndef HALO_64BIT
 typedef char hud_messaging_datum_leave_first_line_blank_offset_assert[
 	offsetof(struct hud_messaging_datum_definition, leave_first_line_blank) == 0x45E ? 1 : -1];
 typedef char hud_messaging_datum_custom_message_offset_assert[
@@ -519,6 +438,7 @@ typedef char hud_messaging_timer_flash_cutoff_offset_assert[
 	offsetof(struct hud_messaging_globals_definition, timer.flash_cutoff) == 0x119E ? 1 : -1];
 typedef char hud_messaging_timer_enabled_offset_assert[
 	offsetof(struct hud_messaging_globals_definition, timer.enabled) == 0x11A7 ? 1 : -1];
+#endif
 typedef char hud_messaging_parameters_size_assert[
 	sizeof(struct hud_messaging_parameters_definition) == 0x120 ? 1 : -1];
 typedef char hud_messaging_single_player_font_index_offset_assert[
@@ -560,9 +480,7 @@ static void render_state_bitmap(
 /* ---------- globals */
 
 static struct hud_messaging_globals_definition *hud_messaging_globals;
-extern struct hud_globals_definition *hud_globals;
-extern struct hud_messaging_parameters_definition *hud_msg_def;
-extern struct hud_scripted_globals_definition *hud_scripted_globals;
+struct hud_messaging_parameters_definition *hud_msg_def;
 static char button_mappings[_icon_custom_1 - _icon_action] =
 {
 	2,

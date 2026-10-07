@@ -27,6 +27,7 @@ symbols in this file:
 /* ---------- headers */
 
 #include "cseries.h"
+#include "rasterizer/rasterizer.h"
 #include "real_math.h"
 #include "rasterizer/rasterizer_transparent_geometry.h"
 #include "rasterizer/xbox/rasterizer_xbox_plasma_energy.h"
@@ -37,6 +38,8 @@ symbols in this file:
  * Keep the stock D3DINLINE definition: the real calls below make VC7 emit
  * the target's complete wrapper bodies. */
 #include <xtl.h>
+#include "rasterizer/xbox/rasterizer_xbox_pixel_shader.h"
+#include "rasterizer/rasterizer_console_vars.h"
 
 /* ---------- constants */
 
@@ -44,24 +47,36 @@ symbols in this file:
 
 /* ---------- structures */
 
-struct rasterizer_debug_options_plasma
-{
-	byte reserved00[0x43];
-	boolean plasma_energy;
-};
-
-struct rasterizer_frame_begin_parameters
-{
-	real game_time_sec;
-	real dt;
-};
-
 struct plasma_runtime_parameters
 {
 	real_rgb_color const *colors;
 	real const *exponents;
 };
 
+#ifdef HALO_64BIT
+/* the shared group (rasterizer_transparent_geometry.h) under the plasma
+shader's names: its permutation index is the bitmap sequence index, and its
+animation field carries the runtime parameters */
+struct rasterizer_transparent_geometry_group_plasma
+{
+	byte reserved00[offsetof(struct transparent_geometry_group, shader)];
+	struct shader *shader;
+	short bitmap_sequence_index;
+	byte reserved12[offsetof(struct transparent_geometry_group, animation) -
+		offsetof(struct transparent_geometry_group, shader_permutation_index) - sizeof(short)];
+	struct plasma_runtime_parameters const *runtime_parameters;
+};
+
+typedef char plasma_group_shader_offset_assert[
+	offsetof(struct rasterizer_transparent_geometry_group_plasma, shader) ==
+		offsetof(struct transparent_geometry_group, shader) ? 1 : -1];
+typedef char plasma_group_sequence_offset_assert[
+	offsetof(struct rasterizer_transparent_geometry_group_plasma, bitmap_sequence_index) ==
+		offsetof(struct transparent_geometry_group, shader_permutation_index) ? 1 : -1];
+typedef char plasma_group_runtime_offset_assert[
+	offsetof(struct rasterizer_transparent_geometry_group_plasma, runtime_parameters) ==
+		offsetof(struct transparent_geometry_group, animation) ? 1 : -1];
+#else
 struct rasterizer_transparent_geometry_group_plasma
 {
 	byte reserved00[0xC];
@@ -70,6 +85,7 @@ struct rasterizer_transparent_geometry_group_plasma
 	byte reserved12[0x5A];
 	struct plasma_runtime_parameters const *runtime_parameters;
 };
+#endif
 
 struct shader_transparent_plasma_definition
 {
@@ -101,34 +117,14 @@ struct shader_transparent_plasma_definition
 	long secondary_noise_map;
 };
 
-struct pixel_shader_definition
-{
-	unsigned long alpha_inputs[8];
-	unsigned long final_combiner_inputs_abcd;
-	unsigned long final_combiner_inputs_efg;
-	unsigned long constant_0[8];
-	unsigned long constant_1[8];
-	unsigned long alpha_outputs[8];
-	unsigned long rgb_inputs[8];
-	unsigned long compare_mode;
-	unsigned long final_combiner_constant_0;
-	unsigned long final_combiner_constant_1;
-	unsigned long rgb_outputs[8];
-	unsigned long combiner_count;
-	unsigned long texture_modes;
-	unsigned long dot_mapping;
-	unsigned long input_texture;
-	unsigned long c0_mapping;
-	unsigned long c1_mapping;
-	unsigned long final_combiner_constants;
-};
-
+#ifndef HALO_64BIT
 typedef char plasma_group_size_assert[
 	sizeof(struct rasterizer_transparent_geometry_group_plasma) == 0x70 ? 1 : -1];
 typedef char plasma_group_shader_offset_assert[
 	offsetof(struct rasterizer_transparent_geometry_group_plasma, shader) == 0xC ? 1 : -1];
 typedef char plasma_group_runtime_offset_assert[
 	offsetof(struct rasterizer_transparent_geometry_group_plasma, runtime_parameters) == 0x6C ? 1 : -1];
+#endif
 typedef char plasma_primary_period_offset_assert[
 	offsetof(struct shader_transparent_plasma_definition, primary_noise_map_animation_period) == 0x98 ? 1 : -1];
 typedef char plasma_primary_bitmap_offset_assert[
@@ -142,10 +138,6 @@ typedef char pixel_shader_definition_size_assert[
 
 /* ---------- prototypes */
 
-double pow(
-	double x,
-	double y);
-
 void rasterizer_set_texture(
 	short stage,
 	short bitmap_type,
@@ -153,10 +145,19 @@ void rasterizer_set_texture(
 	long bitmap_definition_index,
 	short bitmap_sequence_index);
 
+#ifdef HALO_64BIT
+/* (as defined: an x64 Windows caller leaves the upper bits of an argument
+narrower than the definition's parameter as they are) */
+void rasterizer_set_vertex_shader_permutation(
+	short vertex_shader_index,
+	short vertex_type,
+	short permutation_index);
+#else
 void rasterizer_set_vertex_shader_permutation(
 	short vertex_type,
 	short permutation,
 	boolean one_node);
+#endif
 
 void rasterizer_set_pixel_shader(
 	struct pixel_shader_definition const *definition);
@@ -164,7 +165,6 @@ void rasterizer_set_pixel_shader(
 /* ---------- globals */
 
 extern void *global_d3d_device;
-extern struct rasterizer_debug_options_plasma rasterizer_debug_options;
 extern struct rasterizer_frame_begin_parameters global_frame_parameters;
 extern struct pixel_shader_definition pixel_shader;
 
@@ -192,7 +192,7 @@ void rasterizer_plasma_energy_draw(
 		"c:\\halo\\SOURCE\\rasterizer\\xbox\\rasterizer_xbox_plasma_energy.c",
 		21,
 		global_d3d_device);
-	if (rasterizer_debug_options.plasma_energy)
+	if (rasterizer_debug_options.plasma_energy_enabled)
 	{
 		plasma = (struct shader_transparent_plasma_definition const *)(
 			(byte *)shader_get_and_verify_type(group->shader, 10) + sizeof(struct shader));

@@ -143,6 +143,20 @@ struct hs_function_definition
 	short parameter_types[1];
 };
 
+#ifdef HALO_64BIT
+/* A function's parameter types: the first is in the definition, the rest
+follow it in its hs_function_definition_with_N_parameters wrapper. On the
+Xbox the two were contiguous; on a 64-bit host the definition is padded to
+its pointers' alignment, so the rest start sizeof(definition) in. */
+#define HS_FUNCTION_PARAMETER_TYPE(function, index) \
+	((index) == 0 ? (function)->parameter_types[0] : \
+		((short const *)((char const *)(function) + sizeof(struct hs_function_definition)))[(index) - 1])
+
+/* the same, contiguous, for code that walks them as an array (hs_runtime.c) */
+short const *hs_function_parameter_types(
+	struct hs_function_definition const *function);
+#endif
+
 struct hs_external_global_definition
 {
 	char const *name;
@@ -156,6 +170,8 @@ struct hs_external_global_definition
 void hs_initialize(
 	void);
 void hs_initialize_for_new_map(
+	void);
+void hs_dispose_from_old_map(
 	void);
 void hs_update(
 	void);
@@ -234,6 +250,15 @@ char const *hs_global_get_name(
 	short global_index);
 /* ---------- prototypes/HS_COMPILE.C */
 
+void hs_compile_initialize(
+	boolean compiling_scenario);
+void hs_compile_dispose(
+	void);
+long hs_compile_expression(
+	long source_size,
+	char const *source,
+	char const **error_message,
+	char const **error_source);
 boolean hs_parse(
 	long expression_index,
 	short expected_type);
@@ -242,6 +267,9 @@ void hs_compile(
 	char const *source,
 	char const **error_message,
 	char const **error_source);
+boolean hs_compile_postprocess(
+	char const **error_message_pointer,
+	char const **error_source_pointer);
 
 /* ---------- globals */
 
@@ -254,4 +282,9 @@ extern boolean debug_trigger_volumes;
 
 /* ---------- public code */
 
+#ifdef HALO_64BIT
+void hs_node_gc(
+	void);
+
+#endif
 #endif // __HS_H

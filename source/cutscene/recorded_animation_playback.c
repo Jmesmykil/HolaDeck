@@ -228,12 +228,12 @@ static void apply_throttle(
 	struct recorded_unit_control *control,
 	struct animation_event_header const *header,
 	byte const **playback_stream);
-void apply_vector_char_difference(
+static void apply_vector_char_difference(
 	struct animation_playback_controller *animation_state,
 	struct recorded_unit_control *control,
 	struct animation_event_header const *header,
 	byte const **playback_stream);
-void apply_vector_short_difference(
+static void apply_vector_short_difference(
 	struct animation_playback_controller *animation_state,
 	struct recorded_unit_control *control,
 	struct animation_event_header const *header,
@@ -241,7 +241,7 @@ void apply_vector_short_difference(
 
 /* ---------- globals */
 
-struct recorded_animation_playback_data data_002dcf20 =
+static struct recorded_animation_playback_data data_002dcf20 =
 {
 	{
 		NULL,
@@ -411,6 +411,10 @@ boolean recorded_animation_apply_event_stream(
 				time_delta>UNSIGNED_CHAR_MAX);
 			break;
 
+		/* time_delta is left unassigned only by this default arm. Not reached unassigned: the
+		 * arm's assertion failure calls system_exit, which does not return in January
+		 * (0x47c960 jumps to halt_and_catch_fire 0x4f21c0, which loops or calls exit).
+		 * Source-policy approval pending (2026-09-27 audit). */
 		default:
 			match_assert(
 				"c:\\halo\\SOURCE\\cutscene\\recorded_animation_playback.c",
@@ -593,7 +597,7 @@ static void uncompress_vector_from_controller(
 	return;
 }
 
-void apply_vector_char_difference(
+static void apply_vector_char_difference(
 	struct animation_playback_controller *animation_state,
 	struct recorded_unit_control *control,
 	struct animation_event_header const *header,
@@ -655,7 +659,7 @@ void apply_vector_char_difference(
 	return;
 }
 
-void apply_vector_short_difference(
+static void apply_vector_short_difference(
 	struct animation_playback_controller *animation_state,
 	struct recorded_unit_control *control,
 	struct animation_event_header const *header,

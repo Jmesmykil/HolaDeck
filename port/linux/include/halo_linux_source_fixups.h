@@ -25,6 +25,7 @@ struct real_matrix4x3;
 int halo_interpolation_enabled(void);
 float game_time_get_tick_fraction(void);
 void render_interpolation_tick(void);
+void render_interpolation_reset(void);
 void render_interpolation_frame_begin(void);
 void render_interpolation_frame_end(void);
 float render_interpolation_fraction(void);
@@ -38,6 +39,8 @@ float render_interpolation_game_time_sec(long ticks);
 /* the width of the screen the game draws, 480 lines tall: the device's or
 the display's shape, or 640 (port/linux/src/d3d8_gl.c) */
 long halo_screen_width(void);
+/* the screen's pixels to the Xbox's one (port/linux/src/d3d8_gl.c) */
+float halo_screen_scale(void);
 /* takes up a new width between frames (F11); returns the width */
 long halo_screen_commit(void);
 /* while TRUE, drawing shifts right to center 640-column layouts */

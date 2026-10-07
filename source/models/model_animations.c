@@ -149,7 +149,7 @@ symbols in this file:
 
 #include "cseries.h"
 #include "cseries/errors.h"
-#include "models/model_animations.h"
+#include "models/model_animation_definitions.h"
 #include "models/models.h"
 #include "models/model_definitions.h"
 #include "objects/objects.h"
@@ -368,7 +368,7 @@ void animation_get_x_offsets(
 	short frame_index;
 	real x_offset = 0.f;
 	real key_x_offset = 0.f;
-	byte const *frame_info = animation->frame_info.address;
+	byte const *frame_info = xbox_pointer(animation->frame_info.address);
 
 	for (frame_index = 0; frame_index < animation->frame_count; frame_index++)
 	{

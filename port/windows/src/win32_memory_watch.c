@@ -9,18 +9,41 @@ writable again.
 
 This file also reports crashes, which the game's own __try handler cannot
 (port/windows/include/halo_windows_prefix.h).
+
+In the 64-bit build (HALO_64BIT) the window is in the Xbox address space
+(source/cseries/xbox_address.h): pages are named by Xbox address, as in
+the 32-bit build, and host pointers are converted at the edges.
 */
 
 #include <windows.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
-/* the Xbox memory window (port/linux/src/platform.h) */
+/* the Xbox memory window (port/linux/src/platform.h: the desktop builds') */
 #define PLATFORM_CONTIGUOUS_BASE 0x80000000UL
-#define PLATFORM_CONTIGUOUS_SIZE 0x08000000UL
+#define PLATFORM_CONTIGUOUS_SIZE 0x20000000UL
 
 #define WATCH_PAGE_SIZE 0x1000UL
 #define WATCH_PAGE_COUNT (PLATFORM_CONTIGUOUS_SIZE / WATCH_PAGE_SIZE)
+
+#ifdef HALO_64BIT
+#include "../../../source/cseries/xbox_address.h"
+
+/* the Xbox address of a host pointer, or 0 (outside the window) for one
+outside the Xbox address space */
+static unsigned long watch_address(const void *pointer)
+{
+	unsigned long long offset = (unsigned long long)(ULONG_PTR)pointer - XBOX_ADDRESS_SPACE_BASE;
+
+	return offset < XBOX_ADDRESS_SPACE_SIZE ? (unsigned long)offset : 0;
+}
+#define WATCH_ADDRESS(pointer) watch_address(pointer)
+#define WATCH_POINTER(address) xbox_pointer(address)
+#else
+#define WATCH_ADDRESS(pointer) ((unsigned long)(pointer))
+#define WATCH_POINTER(address) ((void *)(address))
+#endif
 
 void platform_log(const char *format, ...);
 
@@ -45,7 +68,7 @@ static void mark_written(unsigned long page)
 
 	page_generation[page] = InterlockedIncrement(&current_generation);
 	page_protected[page] = 0;
-	VirtualProtect((void *)(PLATFORM_CONTIGUOUS_BASE + page * WATCH_PAGE_SIZE), WATCH_PAGE_SIZE,
+	VirtualProtect(WATCH_POINTER(PLATFORM_CONTIGUOUS_BASE + page * WATCH_PAGE_SIZE), WATCH_PAGE_SIZE,
 		PAGE_READWRITE, &previous);
 }
 
@@ -56,7 +79,7 @@ static LONG CALLBACK watch_handler(EXCEPTION_POINTERS *exception)
 	if (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && record->NumberParameters >= 2 &&
 		record->ExceptionInformation[0] == 1 /* a write */)
 	{
-		unsigned long address = (unsigned long)record->ExceptionInformation[1];
+		unsigned long address = WATCH_ADDRESS((void *)record->ExceptionInformation[1]);
 
 		if (in_window(address) && page_protected[page_index(address)])
 		{
@@ -92,7 +115,7 @@ void memory_watch_protect(unsigned long address, unsigned long size)
 			DWORD previous;
 
 			page_protected[page] = 1;
-			VirtualProtect((void *)(PLATFORM_CONTIGUOUS_BASE + page * WATCH_PAGE_SIZE), WATCH_PAGE_SIZE,
+			VirtualProtect(WATCH_POINTER(PLATFORM_CONTIGUOUS_BASE + page * WATCH_PAGE_SIZE), WATCH_PAGE_SIZE,
 				PAGE_READONLY, &previous);
 		}
 	}
@@ -123,7 +146,7 @@ unsigned long memory_watch_generation(unsigned long address, unsigned long size)
 
 void memory_watch_prepare_write(void *address, unsigned long size)
 {
-	unsigned long start = (unsigned long)address;
+	unsigned long start = WATCH_ADDRESS(address);
 	unsigned long first, last, page;
 
 	if (!watch_active || !size)
@@ -133,7 +156,7 @@ void memory_watch_prepare_write(void *address, unsigned long size)
 	if (start < PLATFORM_CONTIGUOUS_BASE)
 		start = PLATFORM_CONTIGUOUS_BASE;
 	first = page_index(start);
-	last = page_index((unsigned long)address + size - 1);
+	last = page_index(WATCH_ADDRESS(address) + size - 1);
 	if (last >= WATCH_PAGE_COUNT)
 		last = WATCH_PAGE_COUNT - 1;
 	for (page = first; page <= last; page++)
@@ -145,7 +168,7 @@ void memory_watch_prepare_write(void *address, unsigned long size)
 
 void memory_watch_forget(void *address, unsigned long size)
 {
-	unsigned long start = (unsigned long)address;
+	unsigned long start = WATCH_ADDRESS(address);
 	unsigned long first, last, page;
 
 	if (!size || !in_window(start))
@@ -163,19 +186,71 @@ void memory_watch_forget(void *address, unsigned long size)
 
 /* ---------- crash reports */
 
+/* errors.c's: debug.txt, whose first lines (its reference address) place
+the addresses here in the build */
+void write_to_error_file(char *string, unsigned char date);
+
+/* a line of the report, to the console and to debug.txt (a player sends
+debug.txt; the console closes with the game) */
+static void crash_line(const char *format, ...)
+{
+	char line[256];
+	va_list arguments;
+	size_t length;
+
+	va_start(arguments, format);
+	vsnprintf(line, sizeof(line) - 2, format, arguments);
+	va_end(arguments);
+	platform_log("%s", line);
+	length = strlen(line);
+	line[length] = '\r';
+	line[length + 1] = '\n';
+	line[length + 2] = 0;
+	write_to_error_file(line, 1);
+}
+
+#ifdef HALO_64BIT
+int win32_unwind(CONTEXT *context, void **frames, int count);
+
+static LONG WINAPI crash_filter(EXCEPTION_POINTERS *exception)
+{
+	EXCEPTION_RECORD *record = exception->ExceptionRecord;
+	CONTEXT context = *exception->ContextRecord;
+	const DWORD64 *stack = (const DWORD64 *)context.Rsp;
+	DWORD64 image = (DWORD64)GetModuleHandleA(NULL);
+	void *frames[32];
+	int count, depth;
+
+	crash_line("crash: exception %08lx at %p (accessing %p), rip %016llx rbp %016llx rsp %016llx",
+		record->ExceptionCode, record->ExceptionAddress,
+		record->NumberParameters >= 2 ? (void *)record->ExceptionInformation[1] : NULL,
+		context.Rip, context.Rbp, context.Rsp);
+	/* (halo.exe's place this run: the addresses below, less it, are the
+	build's own) */
+	crash_line("crash: halo.exe at %016llx, rip at +%llx", image, context.Rip - image);
+	if (!IsBadReadPtr(stack, 4 * sizeof(DWORD64)))
+		crash_line("crash: stack %016llx %016llx %016llx %016llx", stack[0], stack[1], stack[2], stack[3]);
+	/* the calls, from the unwind information (win32_posix.c) */
+	count = win32_unwind(&context, frames, 32);
+	for (depth = 0; depth < count; depth++)
+		crash_line("crash: called from %p", frames[depth]);
+	fflush(stderr);
+	return EXCEPTION_CONTINUE_SEARCH;
+}
+#else
 static LONG WINAPI crash_filter(EXCEPTION_POINTERS *exception)
 {
 	EXCEPTION_RECORD *record = exception->ExceptionRecord;
 	CONTEXT *context = exception->ContextRecord;
 	const DWORD *stack = (const DWORD *)context->Esp;
 
-	platform_log("crash: exception %08lx at %p (accessing %p), eip %08lx ebp %08lx esp %08lx",
+	crash_line("crash: exception %08lx at %p (accessing %p), eip %08lx ebp %08lx esp %08lx",
 		record->ExceptionCode, record->ExceptionAddress,
 		record->NumberParameters >= 2 ? (void *)record->ExceptionInformation[1] : NULL,
 		context->Eip, context->Ebp, context->Esp);
 	if (!IsBadReadPtr(stack, 6 * sizeof(DWORD)))
 	{
-		platform_log("crash: stack %08lx %08lx %08lx %08lx %08lx %08lx",
+		crash_line("crash: stack %08lx %08lx %08lx %08lx %08lx %08lx",
 			stack[0], stack[1], stack[2], stack[3], stack[4], stack[5]);
 	}
 	{
@@ -185,7 +260,7 @@ static LONG WINAPI crash_filter(EXCEPTION_POINTERS *exception)
 
 		for (depth = 0; depth < 32 && frame && !IsBadReadPtr(frame, 2 * sizeof(DWORD)); depth++)
 		{
-			platform_log("crash: called from %08lx", frame[1]);
+			crash_line("crash: called from %08lx", frame[1]);
 			if ((const DWORD *)frame[0] <= frame)
 				break;
 			frame = (const DWORD *)frame[0];
@@ -194,6 +269,7 @@ static LONG WINAPI crash_filter(EXCEPTION_POINTERS *exception)
 	fflush(stderr);
 	return EXCEPTION_CONTINUE_SEARCH;
 }
+#endif
 
 __attribute__((constructor))
 static void crash_reports_install(void)

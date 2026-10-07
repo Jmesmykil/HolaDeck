@@ -325,7 +325,12 @@ static void dot_input(struct xgpu_text *text, const DWORD *state, int stage)
 	"precision highp samplerCube;\n"
 #else
 #define SAMPLE_BIAS ""
+#ifdef __APPLE__
+/* macOS stops at OpenGL 4.1 */
+#define SHADER_VERSION "#version 410 core\n"
+#else
 #define SHADER_VERSION "#version 450 core\n"
+#endif
 #endif
 
 static void sample(struct xgpu_text *text, const struct nv2a_pixel_shader_key *key, int stage, const char *coordinates)
@@ -638,6 +643,8 @@ char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
 		xgpu_text_append(&text, ";\n\tvec4 result = vec4(fA * fB + (1.0 - fA) * fC + fD, fG);\n");
 	}
 
+	if (key->coverage_alpha)
+		xgpu_text_append(&text, "\tresult.a = mix(1.0, result.a, t0.g);\n");
 	if (key->alpha_test_function)
 	{
 		const char *comparison = comparison_operator(key->alpha_test_function);

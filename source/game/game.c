@@ -118,12 +118,12 @@ struct game_options;
 
 /* ---------- headers */
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+#include "halo_phase_profile.h"
+#endif
 #include "cseries/cseries.h"
-#define set_random_seed set_random_seed_inline
 #include "game/game.h"
-#undef set_random_seed
 #include "ai/ai.h"
-#include "ai/ai_runtime.h"
 #include "bink/bink_playback.h"
 #include "bungie_net/network/transport.h"
 #include "cache/cache_files.h"
@@ -144,8 +144,6 @@ struct game_options;
 #include "game/cheats.h"
 #include "game/game_allegiance.h"
 #include "game/game_engine.h"
-#include "game/game_engine_runtime.h"
-#include "game/player_control.h"
 #include "game/player_queues_new.h"
 #include "game/player_rumble.h"
 #include "game/players.h"
@@ -162,26 +160,34 @@ struct game_options;
 #include "items/projectiles.h"
 #include "main/main.h"
 #include "main/console.h"
-#include "math/random_math.h"
 #include "math/real_math.h"
 #include "memory/data.h"
 #include "networking/network_messages.h"
 #include "networking/telnet_console.h"
 #include "objects/objects.h"
+#include "objects/widgets/widgets.h"
 #include "physics/breakable_surfaces.h"
 #include "physics/collision_usage.h"
 #include "physics/point_physics.h"
+#include "rasterizer/common/rasterizer_common.h"
 #include "rasterizer/rasterizer.h"
 #include "render/render.h"
 #include "saved games/game_state.h"
 #include "saved games/saved_game_files.h"
 #include "scenario/scenario.h"
+#include "shaders/shaders.h"
 #include "sound/game_sound.h"
 #include "sound/sound_classes.h"
 #include "sound/sound_manager.h"
 #include "structures/structures.h"
 #include "units/units.h"
 #include "units/vehicles.h"
+#ifdef HALO_64BIT
+#include "rasterizer/common/rasterizer_common.h"
+#endif
+
+/* network_game_globals.c's */
+boolean network_game_distributed_client(void);
 
 /* ---------- constants */
 
@@ -226,144 +232,13 @@ typedef char verify_game_runtime_globals_difficulty_offset[
 
 /* ---------- prototypes */
 
-void game_engine_game_starting(
-	void);
-
-void game_engine_player_added(
-	long player_index);
-
-void recorded_animations_dispose(
-	void);
-void cinematic_dispose(
-	void);
-void hs_dispose(
-	void);
-void cheats_dispose(
-	void);
-void ui_widgets_dispose(
-	void);
-void editor_dispose(
-	void);
-void player_effect_dispose(
-	void);
-void rumble_dispose(
-	void);
-void game_sound_dispose(
-	void);
-void sound_classes_dispose(
-	void);
-void particles_dispose(
-	void);
-void contrails_dispose(
-	void);
-void players_dispose(
-	void);
-void decals_dispose(
-	void);
-void breakable_surfaces_dispose(
-	void);
-void structures_dispose(
-	void);
-void render_dispose(
-	void);
-void objects_dispose(
-	void);
-void director_dispose(
-	void);
-void interface_dispose(
-	void);
-void game_allegiance_dispose(
-	void);
-void saved_game_files_dispose(
-	void);
-void event_manager_dispose(
-	void);
-void input_abstraction_dispose(
-	void);
-void player_ui_dispose(
-	void);
-void game_state_dispose(
-	void);
-void bink_playback_dispose(
-	void);
-void progress_bar_dispose(
-	void);
-
-void rasterizer_dispose_from_old_map(
-	void);
-void game_state_dispose_from_old_map(
-	void);
-void cheats_dispose_from_old_map(
-	void);
-void recorded_animations_dispose_from_old_map(
-	void);
-void hs_dispose_from_old_map(
-	void);
-void cinematic_dispose_from_old_map(
-	void);
-void editor_dispose_from_old_map(
-	void);
-void ai_dispose_from_old_map(
-	void);
-void player_effect_dispose_from_old_map(
-	void);
-void rumble_dispose_from_old_map(
-	void);
-void point_physics_dispose_from_old_map(
-	void);
-void decals_dispose_from_old_map(
-	void);
-void breakable_surfaces_dispose_from_old_map(
-	void);
-void structures_dispose_from_old_map(
-	void);
-void render_dispose_from_old_map(
-	void);
-void objects_dispose_from_old_map(
-	void);
-void director_dispose_from_old_map(
-	void);
-void observer_dispose_from_old_map(
-	void);
-void interface_dispose_from_old_map(
-	void);
-void players_dispose_from_old_map(
-	void);
-void contrails_dispose_from_old_map(
-	void);
-void particles_dispose_from_old_map(
-	void);
-void game_sound_dispose_from_old_map(
-	void);
-void sound_classes_dispose_from_old_map(
-	void);
-void sound_dispose_from_old_map(
-	void);
-void game_allegiance_dispose_from_old_map(
-	void);
-void game_engine_dispose_from_old_map(
-	void);
-void scenario_dispose_from_old_map(
-	void);
-void particles_update(
-	real dt);
-void contrails_update(
-	real dt);
-void widgets_update(
-	real dt);
-void scenario_frame_update(
-	real dt);
-void rasterizer_frame_update(
-	real dt);
-void numeric_countdown_timer_update(
-	void);
-
 /* ---------- globals */
 
 static struct game_runtime_globals_prefix *game_globals = NULL;
 extern struct game_variant game_variant_global;
 extern struct data_array *player_data;
-extern short player_spawn_count;
+/* port: the PC options the game plays by (game_set_game_variant_options) */
+static struct game_variant_options game_variant_options_global;
 
 char const *global_game_difficulty_level_names[NUMBER_OF_GAME_DIFFICULTY_LEVELS] =
 {
@@ -430,11 +305,49 @@ void game_initialize(
 	return;
 }
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+/* Nonoverlapping tick sections. Dump by elapsed time so a crowded frame
+ * cannot postpone the next diagnostic window for minutes. */
+extern void platform_log(char const *format, ...);
+static struct halo_phase_timing tick_sections[9];
+static uint64_t tick_sections_since;
+static void tick_section(unsigned slot, uint64_t *begin)
+{
+    uint64_t now = halo_profile_now_us(), elapsed = now - *begin;
+    struct halo_phase_timing *t = &tick_sections[slot];
+    t->calls++; t->total_us += elapsed;
+    if (elapsed > t->max_us) t->max_us = elapsed;
+    *begin = now;
+}
+static void tick_sections_report(uint64_t now)
+{
+    static char const *names[] = { "setup", "players_before", "effects", "first_person",
+        "game_engine", "scripts", "objects", "players_after", "hud" };
+    if (!tick_sections_since) tick_sections_since = now;
+    if (now - tick_sections_since < 5000000) return;
+    for (unsigned i = 0; i < 9; i++)
+        platform_log("[tick_pass] frame=%llu tick=%ld span_us=%llu part=%s calls=%llu cpu_us=%llu max_us=%llu",
+            (unsigned long long)halo_guest_phases.frame, game_time_get(),
+            (unsigned long long)(now-tick_sections_since), names[i],
+            (unsigned long long)tick_sections[i].calls, (unsigned long long)tick_sections[i].total_us,
+            (unsigned long long)tick_sections[i].max_us);
+    memset(tick_sections, 0, sizeof(tick_sections));
+    tick_sections_since = now;
+}
+#define TICK_SECTION(n) tick_section(n, &section_begin)
+#else
+#define TICK_SECTION(n) ((void)0)
+#endif
+
 void game_tick(
 	void)
 {
 	real seconds_per_tick;
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+    uint64_t profile_begin = halo_profile_now_us(), profile_frame = halo_guest_phases.frame;
+    uint64_t section_begin = profile_begin;
+#endif
 	profile_tick_start();
 	collision_log_begin_period(0);
 	real_math_reset_precision();
@@ -445,32 +358,58 @@ void game_tick(
 		0x28D,
 		game_globals->active);
 
+	/* port: a client of another's game, the host's rules (its own cheats and
+	game speed, set before it joined too, put back) */
+	cheats_network_client_enforce();
 	remove_quitting_players_from_game();
 	game_allegiance_update();
 	units_update();
-	ai_update();
+	/* (the host's actors drive the host's units, which a client of the
+	distributed netcode has from the host: its own would fight the host's
+	positions, and could place objects of their own) */
+	if (!network_game_distributed_client())
+		ai_update();
+	TICK_SECTION(0);
 	players_update_before_game();
+	TICK_SECTION(1);
 
 	seconds_per_tick = game_globals->players_are_double_speed
 		? 1.0f / (2 * TICKS_PER_SECOND)
 		: 1.0f / TICKS_PER_SECOND;
+#if defined(__linux__) || defined(HALO_ANDROID)
+    { uint64_t begin = halo_profile_now_us();
+      effects_update(seconds_per_tick);
+      halo_frame_phase_add(&halo_guest_frame_phases, HALO_FRAME_EFFECTS, begin, halo_profile_now_us(), profile_frame); }
+#else
 	effects_update(seconds_per_tick);
+#endif
+	TICK_SECTION(2);
 	lock_global_random_seed();
 	rumble_update();
 	first_person_weapons_update();
 	unlock_global_random_seed();
+	TICK_SECTION(3);
 	game_engine_update();
+	TICK_SECTION(4);
 	editor_update();
 	hs_update();
 	recorded_animations_update();
+	TICK_SECTION(5);
 	objects_update();
+	TICK_SECTION(6);
 	players_update_after_game();
+	TICK_SECTION(7);
 	hud_update();
 	player_effect_update();
+	TICK_SECTION(8);
 
 	profile_exit(game_update_section);
 	collision_log_end_period();
 	profile_tick_end();
+#if defined(__linux__) || defined(HALO_ANDROID)
+    halo_phase_add(&halo_guest_phases, HALO_PHASE_GAME, profile_begin, halo_profile_now_us(), profile_frame);
+    tick_sections_report(halo_profile_now_us());
+#endif
 
 	return;
 }
@@ -554,8 +493,27 @@ void game_set_game_variant(
 	{
 		game_variant_global = *variant;
 	}
+	/* port: its PC options, until the network game's are given */
+	game_variant_options_default(&game_variant_global, &game_variant_options_global);
 
 	return;
+}
+
+void game_set_game_variant_options(
+	struct game_variant_options const *options)
+{
+	if (options)
+		game_variant_options_global = *options;
+	else
+		game_variant_options_default(&game_variant_global, &game_variant_options_global);
+
+	return;
+}
+
+struct game_variant_options const *game_variant_options_get(
+	void)
+{
+	return &game_variant_options_global;
 }
 
 void game_set_game_engine_index(
@@ -659,14 +617,6 @@ boolean game_is_cooperative(
 	return player_spawn_count > 1;
 }
 
-void set_random_seed(
-	unsigned long seed)
-{
-	*get_global_random_seed_address() = seed;
-
-	return;
-}
-
 boolean game_load(
 	struct game_options *options)
 {
@@ -683,6 +633,11 @@ boolean game_load(
 		0x194,
 		game_options_verify(options));
 
+#if defined(HALO_GAME_BROWSER) && (defined(__linux__) || defined(HALO_ANDROID))
+    /* Native maps are read directly; the Xbox copy/precache loop may never
+     * run. Put a loading frame on screen before synchronous scenario IO. */
+    progress_bar_begin(TRUE);
+#endif
 	random_seed_debug_log(TRUE);
 	csmemcpy(&game_globals->options, options, sizeof(*options));
 	if (scenario_load(options->map_name))
@@ -690,14 +645,19 @@ boolean game_load(
 		game_globals->map_loaded = TRUE;
 	}
 
+#if defined(HALO_GAME_BROWSER) && (defined(__linux__) || defined(HALO_ANDROID))
+    if(game_globals->map_loaded) progress_bar_native_stage(0.35f,"MAP READY");
+    else progress_bar_end();
+#endif
 	return game_globals->map_loaded;
 }
+
+void network_distributed_new_game(void);
+void network_objects_placed(void);
 
 void game_initialize_for_new_map(
 	void)
 {
-	unsigned long random_seed;
-
 	match_assert(
 		"c:\\halo\\SOURCE\\game\\game.c",
 		0x1D1,
@@ -707,21 +667,29 @@ void game_initialize_for_new_map(
 		0x1D2,
 		!game_globals->active);
 
-	random_seed = game_globals->options.random_seed;
-	*get_global_random_seed_address() = random_seed;
+	set_random_seed(game_globals->options.random_seed);
 	game_engine_dispose();
 	game_engine_initialize(&game_variant_global);
 	real_math_reset_precision();
 	rasterizer_initialize_for_new_map();
 	game_state_initialize_for_new_map();
+	progress_bar_native_stage(0.50f,"GAME STATE READY");
 	game_time_initialize_for_new_map();
 	interface_initialize_for_new_map();
 	game_allegiance_initialize_for_new_map();
 	players_initialize_for_new_map();
 	scenario_initialize_for_new_map();
 	objects_initialize_for_new_map();
+	/* nothing of the distributed netcode's carried into the new game
+	(port/linux/game/network_distributed.c), before anything of the map
+	makes an object: a client makes the map's objects, and the game type's
+	(the flags of capture the flag, game_engine_initialize_for_new_map), at
+	the host's indices, not its own objects' of the last game's */
+	network_distributed_new_game();
+	render_interpolation_reset();
 	render_initialize_for_new_map();
 	structures_initialize_for_new_map();
+	progress_bar_native_stage(0.65f,"WORLD READY");
 	breakable_surfaces_initialize_for_new_map();
 	decals_initialize_for_new_map();
 	director_initialize_for_new_map();
@@ -733,6 +701,7 @@ void game_initialize_for_new_map(
 	sound_initialize_for_new_map();
 	sound_classes_initialize_for_new_map();
 	game_sound_initialize_for_new_map();
+	progress_bar_native_stage(0.80f,"EFFECTS AND SOUND READY");
 	weather_particle_systems_initialize_for_new_map();
 	point_physics_initialize_for_new_map();
 	game_engine_initialize_for_new_map();
@@ -748,14 +717,28 @@ void game_initialize_for_new_map(
 	hs_initialize_for_new_map();
 	recorded_animations_initialize_for_new_map();
 	cheats_initialize_for_new_map();
+	progress_bar_native_stage(0.90f,"SPAWNING OBJECTS");
 
 	game_globals->active = TRUE;
 	objects_place();
 	if (!game_in_editor())
 		ai_place();
+	/* (the map's objects, placed as on the host: a distributed client's own
+	from now on go elsewhere, port/linux/game/network_objects.c) */
+	network_objects_placed();
+	progress_bar_native_stage(1.f,"READY");
+	progress_bar_end();
 	ui_widgets_safe_to_load(TRUE);
 
 	return;
+}
+
+/* port: whether a map is loaded, the main menu's too: game_in_progress()
+is not, once game_time_end() stops its clock */
+boolean game_map_loaded(
+	void)
+{
+	return game_globals->map_loaded;
 }
 
 boolean game_map_loading_in_progress(
@@ -1031,7 +1014,9 @@ void remove_quitting_players_from_game(
 
 		if (quit_time != NONE && !player->quit_out_of_game)
 		{
-			if (current_time == quit_time)
+			/* port: at its time or past it (a client's clock may jump the
+			ticks it missed to the host's, game_time_set_distributed) */
+			if (current_time >= quit_time)
 			{
 				long unit_index = player->unit_index;
 
@@ -1041,15 +1026,6 @@ void remove_quitting_players_from_game(
 					unit_get(unit_index);
 					unit_kill_no_statistics(player->unit_index);
 				}
-			}
-			else if (current_time > quit_time)
-			{
-				error(
-					_error_silent,
-					"player %x failed to quit, wanted %d is %d",
-					iterator.datum_index,
-					quit_time,
-					current_time);
 			}
 		}
 	}

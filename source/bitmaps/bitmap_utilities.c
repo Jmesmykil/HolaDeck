@@ -228,7 +228,7 @@ symbols in this file:
 
 #include "cseries.h"
 
-#include "bitmaps/bitmaps_internal.h"
+#include "bitmaps/bitmaps.h"
 #include "bitmaps/bitmap_utilities.h"
 #include "bitmaps/bitmap_group.h"
 #include "bitmaps/s3tc/s3tc.h"
@@ -296,6 +296,23 @@ enum
 
 /* ---------- macros */
 
+#ifdef HALO_CUSTOM_EDITION
+/* port: a Custom Edition or HaloMD map's colors may be over 1 (a HaloMD
+map's change colors are 2): Halo PC's engine used them unchecked, as this
+does for such maps only; an Xbox map's are asserted as they always were */
+boolean cache_file_tags_are_ce(void);
+#define match_assert_valid_real_rgb_color(file, line, rgb) \
+match_vassert( \
+	file, \
+	line, \
+	cache_file_tags_are_ce() || valid_real_rgb_color(rgb), \
+	csprintf( \
+		temporary, \
+		"%s: assert_valid_real_rgb_color(%f, %f, %f)", \
+		#rgb, (*rgb).red, (*rgb).green, (*rgb).blue \
+	) \
+)
+#else
 #define match_assert_valid_real_rgb_color(file, line, rgb) \
 match_vassert( \
 	file, \
@@ -307,6 +324,7 @@ match_vassert( \
 		#rgb, (*rgb).red, (*rgb).green, (*rgb).blue \
 	) \
 )
+#endif
 
 /* ---------- structures */
 
@@ -405,10 +423,10 @@ static void bitmap_cm_vector_map(
 
 /* ---------- globals */
 
-real const oo_unsigned_short_max = 1.0f / UNSIGNED_SHORT_MAX;
-short bitmap_sharpen_negative_table[256]= {0};
-short bitmap_sharpen_positive_table[256]= {0};
-short bitmap_smooth_filter_coefficients[MAXIMUM_FILTER_SIZE]= {0};
+static real const oo_unsigned_short_max = 1.0f / UNSIGNED_SHORT_MAX;
+static short bitmap_sharpen_negative_table[256]= {0};
+static short bitmap_sharpen_positive_table[256]= {0};
+static short bitmap_smooth_filter_coefficients[MAXIMUM_FILTER_SIZE]= {0};
 
 /* ---------- public code */
 
@@ -2277,9 +2295,9 @@ real real_rgb_color_brightness(
 		color->blue * 0.114f;
 }
 
-struct hsv_color *rgb_color_to_hsv_color(
-	struct rgb_color const *rgb,
-	struct hsv_color *hsv)
+union hsv_color *rgb_color_to_hsv_color(
+	union rgb_color const *rgb,
+	union hsv_color *hsv)
 {
 	real red = (real)(long)rgb->red * (1.0f / 65535.0f);
 	real green = (real)(long)rgb->green * (1.0f / 65535.0f);
@@ -2366,9 +2384,9 @@ struct hsv_color *rgb_color_to_hsv_color(
 	return hsv;
 }
 
-struct rgb_color *hsv_color_to_rgb_color(
-	struct hsv_color const *hsv,
-	struct rgb_color *rgb)
+union rgb_color *hsv_color_to_rgb_color(
+	union hsv_color const *hsv,
+	union rgb_color *rgb)
 {
 	real scaled_hue;
 	real saturation;
@@ -2453,6 +2471,10 @@ struct rgb_color *hsv_color_to_rgb_color(
 		}
 	}
 
+	/* The sector switch has no default. Not reached unassigned: for a word hue,
+	 * scaled_hue = hue * 6 / 65536 is at most 393210 / 65536 < 6 (exact in real), so
+	 * sector is 0..5 and each of those cases assigns red, green and blue. Source-policy
+	 * approval pending (2026-09-27 audit). */
 	rgb->red = (word)(long)(red * 65535.0f);
 	rgb->green = (word)(long)(green * 65535.0f);
 	rgb->blue = (word)(long)(blue * 65535.0f);
@@ -2624,7 +2646,7 @@ union real_rgb_color *real_hsv_color_to_real_rgb_color(
 }
 
 union real_argb_color *argb_color_to_real_argb_color(
-	struct argb_color const *source,
+	union argb_color const *source,
 	union real_argb_color *result)
 {
 	result->alpha = (real)(long)source->alpha * oo_unsigned_short_max;
@@ -2635,7 +2657,7 @@ union real_argb_color *argb_color_to_real_argb_color(
 }
 
 union real_rgb_color *rgb_color_to_real_rgb_color(
-	struct rgb_color const *source,
+	union rgb_color const *source,
 	union real_rgb_color *result)
 {
 	result->red = (real)(long)source->red * oo_unsigned_short_max;

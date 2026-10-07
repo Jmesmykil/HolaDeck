@@ -23,6 +23,11 @@ Xbox memory window uses. Also the process start-up the Windows build needs.
 
 /* ---------- start-up */
 
+/* laptops with a second, faster GPU (NVIDIA Optimus, AMD switchable
+graphics) run a program on the integrated one unless it exports these */
+__declspec(dllexport) DWORD NvOptimusEnablement = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+
 __attribute__((constructor))
 static void windows_startup(void)
 {
@@ -33,6 +38,57 @@ static void windows_startup(void)
 	game's frame pacing sleeps for short intervals */
 	timeBeginPeriod(1);
 }
+
+#ifdef HALO_64BIT
+/* ---------- backtraces */
+
+/* Unwinds context, a frame at a time, with the unwind information every x64
+function has (its frame pointer, when it keeps one, points partway into its
+frame: there is no chain to follow); the return addresses, at most count,
+go to frames. Also the crash reports' (win32_memory_watch.c). */
+int win32_unwind(CONTEXT *context, void **frames, int count)
+{
+	int captured = 0;
+
+	while (captured < count)
+	{
+		DWORD64 image_base, establisher_frame;
+		void *handler_data;
+		RUNTIME_FUNCTION *function = RtlLookupFunctionEntry(context->Rip, &image_base, NULL);
+
+		if (function)
+		{
+			RtlVirtualUnwind(UNW_FLAG_NHANDLER, image_base, context->Rip, function, context, &handler_data,
+				&establisher_frame, NULL);
+		}
+		else
+		{
+			/* a leaf function: the return address is on top of the stack */
+			if (IsBadReadPtr((const void *)context->Rsp, sizeof(DWORD64)))
+				break;
+			context->Rip = *(const DWORD64 *)context->Rsp;
+			context->Rsp += sizeof(DWORD64);
+		}
+		if (!context->Rip)
+			break;
+		frames[captured++] = (void *)context->Rip;
+	}
+	return captured;
+}
+
+/* <execinfo.h>'s, for the 64-bit game's stack dumps
+(source/cseries/stack_walk_windows.c, interface/hud_draw.c's
+get_return_eip): the return addresses of the calls that led here, the one
+into the caller first */
+__attribute__((noinline)) int backtrace(void **frames, int count)
+{
+	CONTEXT context;
+
+	/* (a place in this function: the first frame unwound is its own) */
+	RtlCaptureContext(&context);
+	return win32_unwind(&context, frames, count);
+}
+#endif
 
 static int errno_from_windows_error(DWORD error)
 {
@@ -115,6 +171,21 @@ pthread_t pthread_self(void)
 int pthread_equal(pthread_t thread1, pthread_t thread2)
 {
 	return thread1 == thread2;
+}
+
+_Static_assert(sizeof(INIT_ONCE) == sizeof(void *), "pthread_once_t holds an INIT_ONCE");
+
+static BOOL CALLBACK once_routine(PINIT_ONCE once, PVOID routine, PVOID *context)
+{
+	(void)once;
+	(void)context;
+	((void (*)(void))routine)();
+	return TRUE;
+}
+
+int pthread_once(pthread_once_t *once, void (*routine)(void))
+{
+	return InitOnceExecuteOnce((PINIT_ONCE)&once->once, once_routine, (PVOID)routine, NULL) ? 0 : -1;
 }
 
 int pthread_attr_init(pthread_attr_t *attributes)

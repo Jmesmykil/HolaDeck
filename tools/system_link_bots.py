@@ -1,6 +1,6 @@
 """Stand-in system link machines for testing large multiplayer sessions.
 
-Joins a native-build Halo host (port/, built with HALO_LINUX) with many
+Joins a native-build Halo host (port/) with many
 lightweight machines, each with one player, speaking the game's system link
 protocol directly: TCP to the host's port 5150 for the game's messages, UDP for
 player input. Each machine binds its own loopback address (127.0.0.2,
@@ -12,10 +12,11 @@ addresses are yours).
 
 joins 127 machines to the host at 127.0.0.1, marks the map precached, asks
 the host to start once everyone is in, then plays: every machine
-acknowledges each tick's update and sends its player's input (standing
-still and slowly turning), the way a real client keeps a lockstep game
-running. The bots do not simulate the game; they only keep up with the
-host's update stream. Ctrl+C leaves.
+acknowledges each tick's update and sends the client's game update message
+(standing still and slowly turning), which keeps its connection alive. The
+bots do not simulate the game, nor send the distributed netcode's input
+(port/linux/NETCODE.md), so their players stand where they spawn. Ctrl+C
+leaves.
 
 The protocol (network_messages.c): a message is a 2-byte big-endian header
 (length << 4 | type << 2, length including the header), then a packet: a
@@ -187,7 +188,10 @@ class Machine:
                 time.sleep(0.001)
 
     def joined(self):
-        self.send(message(CLIENT_JOIN_GAME_REQUEST, wide(self.name, 32) + JOIN_TOKEN))
+        # The current wire request includes a 32-byte hexadecimal hardware ID.
+        hardware_id = ("%032x" % self.index).encode("ascii")
+        self.send(message(CLIENT_JOIN_GAME_REQUEST,
+                          wide(self.name, 32) + JOIN_TOKEN + hardware_id))
         self.state = "joining"
 
     def receive(self):

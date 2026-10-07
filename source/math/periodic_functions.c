@@ -233,6 +233,11 @@ real periodic_function_evaluate(
 
 	if (function_type == _periodic_function_one)
 		return 1.0f;
+	/* a function there is none of (a Halo PC map's tag may name one:
+	port/linux/game/ce_functions.c makes the fields it knows valid ones) is
+	the first, one, as a zeroed field is: never a table past the last */
+	if (function_type < 0 || function_type >= NUMBER_OF_PERIODIC_FUNCTIONS)
+		return 1.0f;
 
 	match_assert(
 		"c:\\halo\\SOURCE\\math\\periodic_functions.c",
@@ -285,6 +290,9 @@ real transition_function_evaluate(
 		value = 1.0f;
 
 	if (function_type == _transition_function_linear)
+		return value;
+	/* as for a periodic function: the first, linear */
+	if (function_type < 0 || function_type >= NUMBER_OF_TRANSITION_FUNCTIONS)
 		return value;
 
 	match_assert(
@@ -367,9 +375,14 @@ static void transition_function_build_table(
 		case _transition_function_cosine:
 			result = ((real)sin(value*3.1415927f-1.5707964f)+1.0f)*0.5f;
 			break;
+		/* January left result unassigned in this arm, trusting system_exit not to
+		 * return; a build whose asserts do not halt would go on with it. It is the
+		 * first function's value here, as an unknown function is evaluated
+		 * (periodic_function_evaluate). */
 		default:
 			display_assert(NULL, "c:\\halo\\SOURCE\\math\\periodic_functions.c", 411, TRUE);
 			system_exit(-1);
+			result = value;
 			break;
 		}
 
@@ -455,9 +468,14 @@ static void periodic_function_build_table(
 			result = (real)fmod((double)random_x, 1.0);
 			result *= result;
 			break;
+		/* January left result unassigned in this arm, trusting system_exit not to
+		 * return; a build whose asserts do not halt would go on with it. It is the
+		 * first function's value here, as an unknown function is evaluated
+		 * (periodic_function_evaluate). */
 		default:
 			display_assert(NULL, "c:\\halo\\SOURCE\\math\\periodic_functions.c", 499, TRUE);
 			system_exit(-1);
+			result = 1.0f;
 			break;
 		}
 
@@ -498,7 +516,7 @@ void periodic_functions_initialize(
 		67,
 		!function_tables_initialized);
 	function_tables_initialized = TRUE;
-	*get_global_random_seed_address() = 0x20F3F660;
+	set_random_seed(0x20F3F660);
 
 	for (function_index = 0; function_index < NUMBER_OF_PERIODIC_FUNCTIONS; function_index++)
 	{

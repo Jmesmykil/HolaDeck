@@ -238,7 +238,7 @@ enum
 	((struct light_datum *)datum_get(light_data, (index)))
 
 #define light_definition_get(index) \
-	((struct light_definition *)tag_get(LIGHT_DEFINITION_TAG, (index)))
+	((struct point_light_definition *)tag_get(LIGHT_DEFINITION_TAG, (index)))
 
 #define lens_flare_definition_get(index) \
 	((struct lens_flare_definition *)tag_get(LENS_FLARE_DEFINITION_TAG, (index)))
@@ -249,12 +249,12 @@ enum
 		_shader_type_environment))
 
 #define structure_material_get_vertex(material, vertex_index) \
-	((struct environment_vertex_compressed const *)(material)->compressed_vertex_data.address \
+	((struct environment_vertex_compressed const *)xbox_pointer((material)->compressed_vertex_data.address) \
 		+ (vertex_index))
 
 #define structure_material_get_lightmap_vertex(material, vertex_index) \
 	((struct environment_lightmap_vertex_compressed const *) \
-		((struct environment_vertex_compressed const *)(material)->compressed_vertex_data.address \
+		((struct environment_vertex_compressed const *)xbox_pointer((material)->compressed_vertex_data.address) \
 			+ (material)->vertices.count) \
 		+ (vertex_index))
 
@@ -289,7 +289,7 @@ struct lights_game_globals
 	byte reserved01[3];
 };
 
-struct light_definition
+struct point_light_definition
 {
 	long flags;
 	real radius;
@@ -360,16 +360,6 @@ struct rasterizer_lens_flare_submit_parameters
 	long internal_occlusion_pixels;
 };
 
-struct rasterizer_light_submit_parameters
-{
-	struct light_definition *definition;
-	real_point3d position;
-	real_vector3d forward;
-	real_vector3d up;
-	real_rgb_color color;
-	real radius;
-};
-
 struct lights_globals
 {
 	boolean marker_initialized;
@@ -390,20 +380,22 @@ typedef char verify_light_datum_flags_offset[
 typedef char verify_light_datum_cluster_reference_offset[
 	offsetof(struct light_datum, cluster_reference) == 0x10 ? 1 : -1];
 typedef char verify_light_definition_lens_flare_offset[
-	offsetof(struct light_definition, lens_flare) == 0xAC ? 1 : -1];
+	offsetof(struct point_light_definition, lens_flare) == 0xAC ? 1 : -1];
 typedef char verify_light_definition_color_offset[
-	offsetof(struct light_definition, color_interpolation_flags) == 0x34 ? 1 : -1];
+	offsetof(struct point_light_definition, color_interpolation_flags) == 0x34 ? 1 : -1];
 typedef char verify_light_definition_transition_duration_offset[
-	offsetof(struct light_definition, transition_duration) == 0xF4 ? 1 : -1];
+	offsetof(struct point_light_definition, transition_duration) == 0xF4 ? 1 : -1];
 typedef char verify_light_definition_falloff_function_offset[
-	offsetof(struct light_definition, falloff_function) == 0xFA ? 1 : -1];
+	offsetof(struct point_light_definition, falloff_function) == 0xFA ? 1 : -1];
 typedef char verify_light_datum_size[
 	sizeof(struct light_datum) == 0x7C ? 1 : -1];
+#ifndef HALO_64BIT
 typedef char verify_rasterizer_light_submit_parameters_size[
 	sizeof(struct rasterizer_light_submit_parameters) == 0x38 ? 1 : -1];
 typedef char verify_lights_globals_size[
 	sizeof(struct lights_globals) == 0x350 ? 1 : -1];
 
+#endif
 /* ---------- prototypes */
 
 static boolean should_render_lights(
@@ -502,12 +494,12 @@ real object_light_ambient_scale = 0.4f;
 real object_light_secondary_scale = 1.0f;
 boolean object_light_interpolate = TRUE;
 
-extern boolean debug_lights;
-extern boolean debug_object_lights;
-extern struct data_array *light_data;
-extern struct cluster_partition light_cluster_partition;
+boolean debug_lights;
+boolean debug_object_lights;
+struct data_array *light_data;
+struct cluster_partition light_cluster_partition;
 struct lights_game_globals *lights_game_globals = NULL;
-extern short debug_rasterizer_light_count;
+short debug_rasterizer_light_count;
 struct lights_globals lights_globals;
 
 /* ---------- public code */
@@ -693,9 +685,39 @@ void lights_dispose(
 	return;
 }
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+extern int config_boolean(char const *name);
+extern void platform_log(char const *format, ...);
+/* Only spatial partition inputs are cached; light transforms and shading
+ * still update on every refresh. Entries never outlive a map/BSP or datum. */
+static struct light_partition_snapshot {
+    long datum;
+    boolean valid;
+    real_point3d center;
+    real radius;
+    struct location location;
+} light_partition_snapshots[HALO_PORT_MAXIMUM_LIGHTS_PER_MAP];
+static boolean light_partition_reuse = TRUE;
+static unsigned long light_partition_hits, light_partition_refreshes;
+#endif
+
+void lights_reconnect_profile_report(void)
+{
+#if defined(__linux__) || defined(HALO_ANDROID)
+    platform_log("[light_partition] reuse=%d hits=%lu refreshes=%lu", light_partition_reuse,
+        light_partition_hits, light_partition_refreshes);
+    light_partition_hits=0; light_partition_refreshes=0;
+#endif
+}
+
 void lights_initialize_for_new_map(
 	void)
 {
+#if defined(__linux__) || defined(HALO_ANDROID)
+    memset(light_partition_snapshots,0,sizeof(light_partition_snapshots));
+    light_partition_reuse=config_boolean("display.light_partition_reuse");
+    light_partition_hits=0; light_partition_refreshes=0;
+#endif
 	data_make_valid(light_data);
 	lights_game_globals->render_lights = TRUE;
 	cluster_partition_make_valid(&light_cluster_partition);
@@ -727,7 +749,7 @@ long light_new(
 	short object_function_index,
 	short object_change_color_index)
 {
-	struct light_definition *definition = light_definition_get(definition_index);
+	struct point_light_definition *definition = light_definition_get(definition_index);
 	long light_index = NONE;
 
 	if (TEST_FLAG(definition->flags, _light_definition_dynamic_bit)
@@ -772,7 +794,7 @@ long light_new_unattached(
 	if (light_index != NONE)
 	{
 		struct light_datum *light = light_get(light_index);
-		struct light_definition *definition = light_definition_get(definition_index);
+		struct point_light_definition *definition = light_definition_get(definition_index);
 
 		light->flags = 0;
 		light->parent_light_index = game_time_get();
@@ -824,7 +846,7 @@ void lights_preprocess_scene(
 		light->rasterizer_light_index = NONE;
 		if (light->parent_light_index != NONE)
 		{
-			struct light_definition *definition = light_definition_get(
+			struct point_light_definition *definition = light_definition_get(
 				light->definition_index);
 			real elapsed = (real)(current_time - light->parent_light_index);
 
@@ -869,7 +891,7 @@ void lights_preprocess_scene(
 	{
 		long scene_light_handle = lights_globals.scene_point_lights[scene_light_index];
 		struct light_datum *light = light_get(scene_light_handle);
-		struct light_definition *definition = light_definition_get(
+		struct point_light_definition *definition = light_definition_get(
 			light->definition_index);
 		struct object_datum *object;
 		real intensity;
@@ -1317,6 +1339,10 @@ void light_disconnect_from_map(
 	long light_index)
 {
 	struct light_datum *light = light_get(light_index);
+#if defined(__linux__) || defined(HALO_ANDROID)
+    unsigned slot = (unsigned short)light_index;
+    if (slot < HALO_PORT_MAXIMUM_LIGHTS_PER_MAP) light_partition_snapshots[slot].valid=FALSE;
+#endif
 
 	if (TEST_FLAG(light->flags, _point_light_connects_to_map_bit))
 	{
@@ -1442,7 +1468,7 @@ static void render_debug_light(
 	if (debug_lights)
 	{
 		struct light_datum *light = light_get(light_index);
-		struct light_definition *definition = light_definition_get(light->definition_index);
+		struct point_light_definition *definition = light_definition_get(light->definition_index);
 		real radius = definition->radius_modifier_upper_bound * definition->radius;
 		real_argb_color color = *global_real_argb_orange;
 
@@ -1541,7 +1567,7 @@ static void light_compute_bounding_sphere(
 	real *radius)
 {
 	struct light_datum *light = light_get(light_index);
-	struct light_definition *definition = light_definition_get(light->definition_index);
+	struct point_light_definition *definition = light_definition_get(light->definition_index);
 	real light_radius = maximum
 		? definition->radius_modifier_upper_bound * definition->radius
 		: light->radius;
@@ -1741,11 +1767,11 @@ void lights_render_specular(
 	return;
 }
 
-void light_reconnect_to_map(
-	long light_index)
+static void light_reconnect_internal(
+	long light_index, boolean refresh)
 {
 	struct light_datum *light = light_get(light_index);
-	struct light_definition *definition = light_definition_get(light->definition_index);
+	struct point_light_definition *definition = light_definition_get(light->definition_index);
 	struct object_marker markers[1];
 	struct location location;
 	real_point3d position;
@@ -1781,10 +1807,7 @@ void light_reconnect_to_map(
 			TRUE,
 			&position,
 			&radius);
-		match_assert(
-			"c:\\halo\\SOURCE\\objects\\object_lights.c",
-			0x4F9,
-			!TEST_FLAG(light->flags, _point_light_connected_to_map_bit));
+
 		if (light->object_index != NONE && object_try_and_get(light->object_index))
 		{
 			object_get_location(light->object_index, &location);
@@ -1793,6 +1816,23 @@ void light_reconnect_to_map(
 		{
 			scenario_location_from_point(&location, &position);
 		}
+#if defined(__linux__) || defined(HALO_ANDROID)
+        unsigned slot=(unsigned short)light_index;
+        struct light_partition_snapshot *cached=slot<HALO_PORT_MAXIMUM_LIGHTS_PER_MAP ? &light_partition_snapshots[slot] : NULL;
+        light_partition_refreshes++;
+        if (refresh && light_partition_reuse && TEST_FLAG(light->flags, _point_light_connected_to_map_bit) &&
+            cached && cached->valid && cached->datum==light_index &&
+            cached->center.x==position.x && cached->center.y==position.y && cached->center.z==position.z &&
+            cached->radius==radius && cached->location.leaf_index==location.leaf_index &&
+            cached->location.cluster_index==location.cluster_index && cached->location.bonus==location.bonus) {
+            light_partition_hits++;
+            return;
+        }
+#endif
+        if (refresh && TEST_FLAG(light->flags, _point_light_connected_to_map_bit))
+            light_disconnect_from_map(light_index);
+        match_assert("c:\\halo\\SOURCE\\objects\\object_lights.c", 0x4F9,
+            !TEST_FLAG(light->flags, _point_light_connected_to_map_bit));
 		cluster_partition_reconnect(
 			&light_cluster_partition,
 			light_index,
@@ -1801,9 +1841,23 @@ void light_reconnect_to_map(
 			radius,
 			&location);
 		SET_FLAG(light->flags, _point_light_connected_to_map_bit, TRUE);
+#if defined(__linux__) || defined(HALO_ANDROID)
+        if(cached) { cached->datum=light_index; cached->center=position; cached->radius=radius;
+            cached->location=location; cached->valid=TRUE; }
+#endif
 	}
 
 	return;
+}
+
+void light_reconnect_to_map(long light_index)
+{
+    light_reconnect_internal(light_index, FALSE);
+}
+
+void light_refresh_map_attachment(long light_index)
+{
+    light_reconnect_internal(light_index, TRUE);
 }
 
 static void find_point_lights_for_object_in_cluster(

@@ -79,6 +79,7 @@ symbols in this file:
 #include "physics/collisions.h"
 #include "scenario/scenario.h"
 #include "units/unit_definitions.h"
+#include "units/units.h"
 #include "units/vehicle_definitions.h"
 #include "units/vehicles.h"
 
@@ -109,7 +110,7 @@ static boolean action_vehicle_desirable(
 	boolean already_inside,
 	boolean already_attempting_entry);
 
-boolean action_vehicle_evaluate_seat(
+static boolean action_vehicle_evaluate_seat(
 	long actor_index,
 	long vehicle_index,
 	short seat_index,
@@ -137,16 +138,6 @@ static short action_vehicle_find_impromptu_seat(
 	long vehicle_index,
 	real_point3d *entry_point,
 	real_vector3d *entry_facing,
-	real_point3d *hint_point);
-
-/* This public Units owner is temporarily repeated here while its broad owner
- * header is held stable for the parallel Bipeds closure audit. */
-boolean unit_get_seat_entrance_point(
-	long unit_index,
-	long parent_unit_index,
-	short seat_index,
-	real_point3d *entrance_point,
-	real_point3d *seat_point,
 	real_point3d *hint_point);
 
 /* ---------- globals */
@@ -267,7 +258,7 @@ static boolean action_vehicle_desirable(
 	return desirable;
 }
 
-boolean action_vehicle_evaluate_seat(
+static boolean action_vehicle_evaluate_seat(
 	long actor_index,
 	long vehicle_index,
 	short seat_index,
@@ -697,6 +688,13 @@ static short action_vehicle_find_impromptu_seat(
 		}
 	}
 
+	/* BUG (preserved for exact matching): when no seat qualifies, best_seat_index stays
+	 * NONE and the three copies below store the never-assigned best_* locals (January
+	 * 0x40a1b0 +0xe2..+0x11d copies them with plain dword moves). Reachable whenever no
+	 * seat qualifies; the only caller, action_vehicle_setup_impromptu, reads the outputs
+	 * only when the returned seat index is not NONE. A corrected build should copy them
+	 * only when best_seat_index != NONE. Source-policy approval pending (2026-09-27 audit).
+	 */
 	if (entry_point)
 	{
 		*entry_point = best_entry_point;

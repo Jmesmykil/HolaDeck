@@ -46,7 +46,9 @@ struct overhead_map_globals
 	long reserved2c;
 };
 
+#ifndef HALO_64BIT
 typedef char verify_overhead_map_globals_size[sizeof(struct overhead_map_globals) == 0x30 ? 1 : -1];
+#endif
 typedef char verify_overhead_map_enabled_offset[offsetof(struct overhead_map_globals, enabled) == 0x00 ? 1 : -1];
 typedef char verify_overhead_map_bitmap_bounds_offset[offsetof(struct overhead_map_globals, bitmap_bounds) == 0x02 ? 1 : -1];
 typedef char verify_overhead_map_throttle_updates_offset[offsetof(struct overhead_map_globals, throttle_updates) == 0x0A ? 1 : -1];
@@ -61,7 +63,7 @@ typedef char verify_overhead_map_bitmap_offset[offsetof(struct overhead_map_glob
 
 /* ---------- globals */
 
-real const overhead_map_constants[3] = { 0.5f, 84.0f, 80.0f };
+static real const overhead_map_constants[3] = { 0.5f, 84.0f, 80.0f };
 
 static struct overhead_map_globals bss_00453cd0;
 #define overhead_map_globals bss_00453cd0

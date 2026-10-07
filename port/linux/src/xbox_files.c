@@ -24,6 +24,9 @@ matched case-insensitively, like the Xbox's FATX volumes.
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 /* ---------- paths */
 
@@ -42,6 +45,10 @@ static BOOL has_maps(const char *directory)
 	return directory_exists(directory) &&
 		posix_find_entry_case_insensitive(directory, "maps", on_disk, sizeof(on_disk));
 }
+
+#ifdef HALO_64BIT
+char platform_log_path[MAX_PATH];
+#endif
 
 static void trim_separators(char *path)
 {
@@ -68,10 +75,32 @@ const char *platform_data_root(void)
 		else
 		{
 			char executable[MAX_PATH];
+			char executable_directory[MAX_PATH] = "";
+#ifdef __APPLE__
+			uint32_t ex_size = sizeof(executable);
+			ssize_t length = _NSGetExecutablePath(executable, &ex_size) == 0 ? (ssize_t)strlen(executable) : -1;
+#else
 			ssize_t length = readlink("/proc/self/exe", executable, sizeof(executable) - 1);
+#endif
 
+			if (length > 0)
+			{
+				char *slash;
+
+				executable[length] = '\0';
+				snprintf(executable_directory, sizeof(executable_directory), "%s", executable);
+				slash = strrchr(executable_directory, '/');
+				if (slash)
+					*slash = '\0';
+			}
 			snprintf(root, sizeof(root), ".");
-			if (has_maps("assets"))
+			if (executable_directory[0] && has_maps(executable_directory))
+			{
+				/* next to the executable, where the desktop ports' first start
+				extracts it (platform_offer_game_data) */
+				snprintf(root, sizeof(root), "%s", executable_directory);
+			}
+			else if (has_maps("assets"))
 			{
 				snprintf(root, sizeof(root), "assets");
 			}
@@ -82,6 +111,22 @@ const char *platform_data_root(void)
 				int level;
 
 				executable[length] = '\0';
+#ifdef __APPLE__
+				/* ... and <repository>/build/macos/ChupathingyCE.app/Contents/MacOS/halo:
+				the nearest assets folder up to five levels up */
+				for (level = 0; level < 6 && (slash = strrchr(executable, '/')); level++)
+				{
+					char test_assets[MAX_PATH];
+
+					*slash = '\0';
+					snprintf(test_assets, sizeof(test_assets), "%s/assets", executable);
+					if (has_maps(test_assets))
+					{
+						snprintf(root, sizeof(root), "%s", test_assets);
+						break;
+					}
+				}
+#else
 				for (level = 0; level < 3 && (slash = strrchr(executable, '/')); level++)
 					*slash = '\0';
 				if (level == 3 && strlen(executable) + sizeof("/assets") <= sizeof(executable))
@@ -90,12 +135,34 @@ const char *platform_data_root(void)
 					if (has_maps(executable))
 						snprintf(root, sizeof(root), "%s", executable);
 				}
+#endif
 			}
+#ifndef HALO_ANDROID
+			{
+				/* (the macOS application's data goes in its folder in
+				Application Support, not in the application: port_config.c) */
+				char app_folder[MAX_PATH];
+				const char *destination = platform_app_folder(app_folder, sizeof(app_folder))
+					? app_folder : executable_directory;
+
+				if (!has_maps(root) && destination[0] && has_maps(destination))
+					snprintf(root, sizeof(root), "%s", destination);
+				else if (!has_maps(root) && destination[0] && platform_offer_game_data(destination) &&
+					has_maps(destination))
+				{
+					snprintf(root, sizeof(root), "%s", destination);
+				}
+			}
+#endif
 			if (!has_maps(root))
 				platform_log("no maps/ folder found; set paths.data in config.toml to the folder that holds maps/");
 		}
 		trim_separators(root);
-		platform_log("data root: %s", root);
+		platform_log("data root: %s (the game's log: debug.txt there)", root);
+#ifdef HALO_64BIT
+		/* the platform layer's log goes to the game's (xbox_kernel.c) */
+		snprintf(platform_log_path, sizeof(platform_log_path), "%s/debug.txt", root);
+#endif
 	}
 	return root;
 }
@@ -121,6 +188,18 @@ static void make_directories(const char *path)
 		posix_make_directory(partial);
 }
 
+#ifdef __APPLE__
+/* whether this Mac has saves in the folder the game used before the
+application had its own (~/.local/share/halo-linux) */
+static BOOL saves_exist(const char *home)
+{
+	char path[MAX_PATH];
+
+	snprintf(path, sizeof(path), "%s/.local/share/halo-linux", home);
+	return directory_exists(path);
+}
+#endif
+
 const char *platform_save_root(void)
 {
 	static char root[MAX_PATH];
@@ -133,6 +212,16 @@ const char *platform_save_root(void)
 
 		if (*environment)
 			snprintf(root, sizeof(root), "%s", environment);
+#ifdef __APPLE__
+		/* the macOS application keeps everything in its folder in
+		Application Support (platform_app_folder), unless this Mac has saves
+		from before (and its player key: browser.c), in the folder below */
+		else if (platform_app_folder(root, sizeof(root)) &&
+			!(home && *home && saves_exist(home)))
+		{
+			strncat(root, "/saves", sizeof(root) - strlen(root) - 1);
+		}
+#endif
 #ifdef _WIN32
 		/* the Windows build (port/windows) keeps saves in the roaming
 		application data folder */
@@ -364,7 +453,12 @@ static BOOL read_at(struct platform_file *file, LPVOID buffer, DWORD count, LPDW
 		if (result == 0)
 			break;
 		if (bounce)
+#ifdef HALO_64BIT
+			/* (read-only guest pages, which a host page holds with others) */
+			platform_contiguous_write((char *)buffer + total, staging, (size_t)result);
+#else
 			memcpy((char *)buffer + total, staging, (size_t)result);
+#endif
 		total += (DWORD)result;
 	}
 	free(staging);

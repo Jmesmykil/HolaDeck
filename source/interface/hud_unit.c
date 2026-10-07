@@ -98,11 +98,6 @@ enum
 	_hud_panel_motion_sensor_blink_bit
 };
 
-enum
-{
-	MAXIMUM_NUMBER_OF_LOCAL_PLAYERS = 4,
-};
-
 enum hud_damage_indicator_direction
 {
 	_hud_damage_indicator_top = 0,
@@ -140,84 +135,6 @@ struct unit_hud_globals
 	long script_flags;
 };
 
-struct hud_scripted_globals
-{
-	boolean show_hud;
-	boolean show_hud_help_text;
-	byte reserved2[2];
-};
-
-struct hud_messaging_parameters_definition
-{
-	struct hud_absolute_placement_definition absolute_placement;
-	struct hud_placement_definition placement;
-	struct tag_reference single_player_font;
-	struct tag_reference multi_player_font;
-	real up_time;
-	real fade_time;
-	real_argb_color state_color;
-	real_argb_color text_color;
-	real spacing;
-	struct tag_reference hud_item_messages;
-	struct tag_reference messaging_icons;
-	struct tag_reference alternate_icon_text;
-	struct tag_block button_icons;
-	struct hud_color_definition color;
-	struct tag_reference hud_messages;
-	struct hud_color_definition objective_color;
-};
-
-struct hud_waypoint_definition
-{
-	real top_offset;
-	real bottom_offset;
-	real left_offset;
-	real right_offset;
-	long unused0[8];
-	struct tag_reference arrow_bitmap;
-	struct tag_block arrows;
-	long unused1[20];
-};
-
-struct hud_multiplayer_parameters_definition
-{
-	real hud_scale;
-	long unused[0x40];
-};
-
-struct hud_defaults_definition
-{
-	struct tag_reference default_weapon_hud;
-	real motion_sensor_range;
-	real motion_sensor_velocity_sensitivity;
-	real motion_sensor_scale;
-	rectangle2d default_title_bounds;
-	long unused[0xB];
-};
-
-struct hud_damage_indicators_definition
-{
-	short top_offset;
-	short bottom_offset;
-	short left_offset;
-	short right_offset;
-	long unused[8];
-	struct tag_reference indicator_bitmap;
-	short sequence_index;
-	short multiplayer_sequence_index;
-	unsigned long color;
-	long unused2[4];
-};
-
-struct hud_globals_definition
-{
-	struct hud_messaging_parameters_definition messaging;
-	struct hud_waypoint_definition waypoint;
-	struct hud_multiplayer_parameters_definition multiplayer;
-	struct hud_defaults_definition defaults;
-	struct hud_damage_indicators_definition damage_indicators;
-};
-
 typedef char unit_hud_state_auxilary_flash_time_offset_assert[
 	offsetof(struct unit_hud_state, auxilary_flash_time) == 0x22 ? 1 : -1];
 typedef char unit_hud_state_sound_flags_offset_assert[
@@ -231,7 +148,7 @@ typedef char unit_hud_globals_script_flags_offset_assert[
 typedef char unit_hud_globals_size_assert[
 	sizeof(struct unit_hud_globals) == 0x164 ? 1 : -1];
 typedef char hud_scripted_globals_size_assert[
-	sizeof(struct hud_scripted_globals) == 0x4 ? 1 : -1];
+	sizeof(struct hud_scripted_globals_definition) == 0x4 ? 1 : -1];
 typedef char hud_messaging_parameters_definition_size_assert[
 	sizeof(struct hud_messaging_parameters_definition) == 0x120 ? 1 : -1];
 typedef char hud_waypoint_definition_size_assert[
@@ -257,8 +174,6 @@ static void hud_update_unit_local_player(
 /* ---------- globals */
 
 static struct unit_hud_globals *unit_hud_globals = NULL;
-extern struct hud_scripted_globals *hud_scripted_globals;
-extern struct hud_globals_definition *hud_globals;
 
 /* ---------- private code */
 
@@ -740,6 +655,10 @@ void hud_render_damage_indicators(
 							render.camera.viewport_bounds.y1) / 2);
 					break;
 
+				/* theta and screen_position are left unassigned only by this default arm. Not reached unassigned: the
+				 * arm's assertion failure calls system_exit, which does not return in January
+				 * (0x47c960 jumps to halt_and_catch_fire 0x4f21c0, which loops or calls exit).
+				 * Source-policy approval pending (2026-09-27 audit). */
 				default:
 					match_assert(
 						"c:\\halo\\SOURCE\\interface\\hud_unit.c",

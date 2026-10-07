@@ -13,7 +13,7 @@ symbols in this file:
 00108C10 00b0:
 	_data_verify (0000)
 00108CC0 0030:
-	_code_00108cc0 (0000)
+	_datum_initialize (0000)
 00108CF0 0050:
 	_data_new (0000)
 00108D40 0030:
@@ -73,7 +73,7 @@ symbols in this file:
 
 /* ---------- prototypes */
 
-static void code_00108cc0(struct data_array *data, struct datum_header *header);
+static void datum_initialize(struct data_array *data, struct datum_header *header);
 
 /* ---------- globals */
 
@@ -102,7 +102,11 @@ void data_initialize(
 	data->maximum_count = maximum_count;
 	data->size = size;
 	data->signature = 'd@t@';
+#ifdef HALO_64BIT
+	data->data = xbox_address(data+1);
+#else
 	data->data = data+1;
+#endif
 	data->valid = FALSE;
 
 	return;
@@ -129,7 +133,7 @@ void *datum_try_and_get(
 
 		if (absolute_index>=0 && absolute_index<data->maximum_count)
 		{
-			header = (struct datum_header *)((byte *)data->data+data->size*absolute_index);
+			header = (struct datum_header *)((byte *)xbox_pointer(data->data)+data->size*absolute_index);
 			if (!header->identifier || (identifier && header->identifier!=identifier))
 			{
 				header = NULL;
@@ -158,13 +162,31 @@ void *datum_get(
 
 	if (absolute_index>=0 && absolute_index<data->count)
 	{
-		header = (struct datum_header *)((byte *)data->data+data->size*absolute_index);
+		header = (struct datum_header *)((byte *)xbox_pointer(data->data)+data->size*absolute_index);
 		if (header->identifier && (!identifier || identifier==header->identifier))
 		{
 			return header;
 		}
 	}
 
+#ifdef HALO_RELEASE
+	/* port: a release build's message too, and where it was asked from
+	(debug.txt's reference address places it in the build): the caller
+	goes on with the NULL and crashes, with nothing else to say which
+	array and which caller it was */
+	{
+		char message[128];
+
+		csprintf(
+			message,
+			"%.32s index #%d (0x%x) is unused or changed (asked from %p)",
+			data->name,
+			index&0xFFFF,
+			index,
+			__builtin_return_address(0));
+		release_assert_failed(message, "c:\\halo\\SOURCE\\memory\\data.c", 412, TRUE);
+	}
+#else
 	match_vassert(
 		"c:\\halo\\SOURCE\\memory\\data.c",
 		412,
@@ -175,6 +197,7 @@ void *datum_get(
 			data->name,
 			index&0xFFFF,
 			index));
+#endif
 
 	return NULL;
 }
@@ -252,7 +275,7 @@ long datum_new_at_index(
 
 	if (absolute_index>=0 && absolute_index<data->maximum_count && identifier)
 	{
-		header = (struct datum_header *)((byte *)data->data+data->size*absolute_index);
+		header = (struct datum_header *)((byte *)xbox_pointer(data->data)+data->size*absolute_index);
 		if (!header->identifier)
 		{
 			data->actual_count++;
@@ -261,7 +284,7 @@ long datum_new_at_index(
 				data->count = absolute_index+1;
 			}
 
-			code_00108cc0(data, header);
+			datum_initialize(data, header);
 			header->identifier = identifier;
 			result = identifier<<16 | absolute_index;
 		}
@@ -283,12 +306,12 @@ long datum_new(
 
 	absolute_index = data->first_free_absolute_index;
 	size = data->size;
-	header = (struct datum_header *)((byte *)data->data+size*absolute_index);
+	header = (struct datum_header *)((byte *)xbox_pointer(data->data)+size*absolute_index);
 	while (absolute_index<data->maximum_count)
 	{
 		if (!header->identifier)
 		{
-			code_00108cc0(data, header);
+			datum_initialize(data, header);
 			data->actual_count++;
 			data->first_free_absolute_index = absolute_index+1;
 			if (data->count<=absolute_index)
@@ -359,7 +382,7 @@ void data_delete_all(
 
 	for (absolute_index = 0; absolute_index<data->maximum_count; absolute_index++)
 	{
-		((struct datum_header *)((byte *)data->data+data->size*absolute_index))->identifier = 0;
+		((struct datum_header *)((byte *)xbox_pointer(data->data)+data->size*absolute_index))->identifier = 0;
 	}
 
 	return;
@@ -373,7 +396,7 @@ void data_iterator_new(
 	match_assert("c:\\halo\\SOURCE\\memory\\data.c", 249, data->valid);
 
 	iterator->data = data;
-	iterator->signature = (unsigned long)data^'iter';
+	iterator->signature = (unsigned long)POINTER_BITS(data)^'iter';
 	iterator->absolute_index = 0;
 	iterator->datum_index = NONE;
 
@@ -392,14 +415,14 @@ void *data_iterator_next(
 	match_vassert(
 		"c:\\halo\\SOURCE\\memory\\data.c",
 		268,
-		iterator->signature==((unsigned long)iterator->data^'iter'),
+		iterator->signature==((unsigned long)POINTER_BITS(iterator->data)^'iter'),
 		"uninitialized iterator passed to iterator_next()");
 	data_verify(iterator->data);
 	match_assert("c:\\halo\\SOURCE\\memory\\data.c", 271, iterator->data->valid);
 
 	absolute_index = iterator->absolute_index;
 	size = iterator->data->size;
-	header = (struct datum_header *)((byte *)iterator->data->data+size*absolute_index);
+	header = (struct datum_header *)((byte *)xbox_pointer(iterator->data->data)+size*absolute_index);
 	while (absolute_index<iterator->data->count)
 	{
 		datum_index = header->identifier<<16 | absolute_index;
@@ -431,7 +454,7 @@ long data_next_index(
 
 	if (absolute_index>=0 && absolute_index<data->count)
 	{
-		header = (struct datum_header *)((byte *)data->data+data->size*absolute_index);
+		header = (struct datum_header *)((byte *)xbox_pointer(data->data)+data->size*absolute_index);
 		while (absolute_index<data->count)
 		{
 			if (header->identifier)
@@ -462,7 +485,7 @@ long data_prev_index(
 	absolute_index = index==NONE ? data->count-1 : index-1;
 	if (absolute_index>=0 && absolute_index<data->count)
 	{
-		header = (struct datum_header *)((byte *)data->data+data->size*absolute_index);
+		header = (struct datum_header *)((byte *)xbox_pointer(data->data)+data->size*absolute_index);
 		do
 		{
 			if (header->identifier)
@@ -498,9 +521,15 @@ void data_compact(
 
 	if (compacted_data!=empty)
 	{
+#ifdef HALO_64BIT
+		datum = xbox_pointer(data->data);
+		absolute_index = 0;
+		compacted_count = 0;
+#else
 		datum = data->data;
 		absolute_index = (long)empty;
 		compacted_count = (short)(long)empty;
+#endif
 		while (absolute_index<data->count)
 		{
 			if (datum->identifier)
@@ -516,9 +545,9 @@ void data_compact(
 			datum = (struct datum_header *)((byte *)datum+data->size);
 		}
 
-		csmemcpy(data->data, compacted_data, compacted_count*data->size);
+		csmemcpy(xbox_pointer(data->data), compacted_data, compacted_count*data->size);
 		csmemset(
-			(byte *)data->data+compacted_count*data->size,
+			(byte *)xbox_pointer(data->data)+compacted_count*data->size,
 			0,
 			(data->maximum_count-compacted_count)*data->size);
 		data->actual_count = compacted_count;
@@ -532,7 +561,7 @@ void data_compact(
 
 /* ---------- private code */
 
-static void code_00108cc0(
+static void datum_initialize(
 	struct data_array *data,
 	struct datum_header *header)
 {

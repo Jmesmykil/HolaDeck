@@ -132,19 +132,23 @@ symbols in this file:
 
 #include "cseries.h"
 #include "cseries/errors.h"
-#include "main/main_internal.h"
+#include "main/main.h"
 #include "real_math.h"
 #include "rasterizer/rasterizer.h"
+#include "rasterizer/rasterizer_console_vars.h"
 #include "rasterizer/rasterizer_active_camouflage.h"
 #include "rasterizer/rasterizer_geometry.h"
 #include "rasterizer/rasterizer_transparent_geometry.h"
 #include "rasterizer/xbox/rasterizer_xbox_internal.h"
+#include "render/render.h"
 #include "render/render_debug.h"
 #include "shaders/shader_definitions.h"
 #include "shaders/shaders.h"
 #include "rasterizer/xbox/rasterizer_xbox_draw_primitives.h"
 #include "rasterizer/common/rasterizer_common.h"
 #include "text/draw_string.h"
+#include "interface/hud.h"
+#include "interface/hud_definitions.h"
 #include "interface/hud_draw.h"
 #include "bitmaps/bitmap_color_conversion.h"
 #include "bitmaps/bitmap_group.h"
@@ -158,6 +162,7 @@ symbols in this file:
 #include <xtl.h>
 #include "interface/progress_bar_internal.h"
 #include "rasterizer/xbox/rasterizer_xbox.h"
+#include "rasterizer/xbox/rasterizer_xbox_pixel_shader.h"
 #include "rasterizer/xbox/rasterizer_xbox_plasma_energy.h"
 #include "rasterizer/xbox/rasterizer_xbox_water.h"
 #include "rasterizer/xbox/shader_transparent_chicago_preprocessor.h"
@@ -170,6 +175,9 @@ enum
 	RASTERIZER_STATIC_BUFFER_USAGE = D3DUSAGE_WRITEONLY,
 	RASTERIZER_STATIC_BUFFER_POOL = D3DPOOL_MANAGED,
 	RASTERIZER_TRANSPARENT_GEOMETRY_VISIBILITY_TEST_INDEX = 0xfff,
+	/* port: how deep a transparent chicago shader's extra layers' own
+	extra layers are drawn (rasterizer_transparent_geometry_group_draw) */
+	MAXIMUM_TRANSPARENT_GEOMETRY_LAYER_DEPTH = 4,
 };
 
 enum
@@ -378,73 +386,6 @@ enum
 
 /* ---------- structures */
 
-struct rasterizer_transparent_geometry_debug_options_prefix
-{
-	byte reserved00[0xA];
-	boolean debug_transparent_geometry;
-	boolean debug_meter_shader;
-	byte reserved0C[0x10];
-	boolean draw_environment_fog;
-	byte reserved1D[0x15];
-	short transparent_geometry_index;
-	byte reserved34[0xE];
-	boolean active_camouflage_multipass;
-	byte reserved43[0x11];
-	unsigned long zbias;
-	byte reserved58[0x8];
-	boolean zsprites;
-	byte reserved61[0xB];
-	real transparent_geometry_intensity;
-	real debug_shader_values[6];
-	boolean transparent_pixel_counter_active;
-	boolean transparent_pixel_counter;
-	byte reserved8A[2];
-};
-
-typedef char rasterizer_transparent_geometry_debug_options_index_offset_assert[
-	offsetof(struct rasterizer_transparent_geometry_debug_options_prefix,
-		transparent_geometry_index) == 0x32 ? 1 : -1];
-typedef char rasterizer_transparent_geometry_debug_options_zbias_offset_assert[
-	offsetof(struct rasterizer_transparent_geometry_debug_options_prefix,
-		zbias) == 0x54 ? 1 : -1];
-typedef char rasterizer_transparent_geometry_debug_options_intensity_offset_assert[
-	offsetof(struct rasterizer_transparent_geometry_debug_options_prefix,
-		transparent_geometry_intensity) == 0x6C ? 1 : -1];
-typedef char rasterizer_transparent_geometry_debug_options_counter_offset_assert[
-	offsetof(struct rasterizer_transparent_geometry_debug_options_prefix,
-		transparent_pixel_counter_active) == 0x88 ? 1 : -1];
-typedef char rasterizer_transparent_geometry_debug_options_fog_offset_assert[
-	offsetof(struct rasterizer_transparent_geometry_debug_options_prefix,
-		draw_environment_fog) == 0x1C ? 1 : -1];
-typedef char rasterizer_transparent_geometry_debug_options_zsprites_offset_assert[
-	offsetof(struct rasterizer_transparent_geometry_debug_options_prefix,
-		zsprites) == 0x60 ? 1 : -1];
-typedef char rasterizer_transparent_geometry_debug_options_values_offset_assert[
-	offsetof(struct rasterizer_transparent_geometry_debug_options_prefix,
-		debug_shader_values) == 0x70 ? 1 : -1];
-
-struct pixel_shader_definition
-{
-	unsigned long alpha_inputs[8];
-	unsigned long final_combiner_inputs_abcd;
-	unsigned long final_combiner_inputs_efg;
-	unsigned long constant_0[8];
-	unsigned long constant_1[8];
-	unsigned long alpha_outputs[8];
-	unsigned long rgb_inputs[8];
-	unsigned long compare_mode;
-	unsigned long final_combiner_constant_0;
-	unsigned long final_combiner_constant_1;
-	unsigned long rgb_outputs[8];
-	unsigned long combiner_count;
-	unsigned long texture_modes;
-	unsigned long dot_mapping;
-	unsigned long input_texture;
-	unsigned long c0_mapping;
-	unsigned long c1_mapping;
-	unsigned long final_combiner_constants;
-};
-
 /* the transparent shader tag layouts January reads here; the same file-local
  * form SHADER_TRANSPARENT_GENERIC_PREPROCESSOR.C and
  * SHADER_TRANSPARENT_CHICAGO_PREPROCESSOR.C use, extended with the fields this
@@ -620,15 +561,16 @@ typedef char shader_transparent_meter_gradient_min_color_offset_assert[
 typedef char shader_transparent_meter_brightness_source_offset_assert[
 	offsetof(struct shader_transparent_meter_definition, meter_brightness_source) == 0xD8 ? 1 : -1];
 
-struct rasterizer_model_skinning_parameters
-{
-	void const *node_matrices;
-	short node_matrix_count;
-	word pad06;
-};
-
+#ifdef HALO_64BIT
+struct rasterizer_transparent_geometry_hud_globals_prefix
+#else
 struct transparent_geometry_group
+#endif
 {
+#ifdef HALO_64BIT
+	byte reserved00[0x54];
+	long single_player_font_index;
+#else
 	unsigned long geometry_flags;
 	long object_index;
 	long source_object_index;
@@ -670,7 +612,9 @@ struct transparent_geometry_group
 	byte reserved9C;
 	boolean cortana_hack;
 	byte reserved9E[2];
+#endif
 };
+#ifndef HALO_64BIT
 
 typedef char transparent_geometry_group_size_assert[
 	sizeof(struct transparent_geometry_group) == 0xA0 ? 1 : -1];
@@ -693,12 +637,7 @@ typedef char transparent_geometry_group_sorted_index_offset_assert[
 typedef char transparent_geometry_group_active_camouflage_offset_assert[
 	offsetof(struct transparent_geometry_group,
 		active_camouflage_transparent_source_object_index) == 0x98 ? 1 : -1];
-
-struct rasterizer_transparent_geometry_hud_globals_prefix
-{
-	byte reserved00[0x54];
-	long single_player_font_index;
-};
+#endif
 
 struct rasterizer_xbox_transparent_geometry_globals
 {
@@ -708,19 +647,18 @@ struct rasterizer_xbox_transparent_geometry_globals
 	byte reserved09[3];
 	unsigned long transparent_pixel_count;
 };
+#ifndef HALO_64BIT
 
 typedef char rasterizer_xbox_transparent_geometry_globals_size_assert[
 	sizeof(struct rasterizer_xbox_transparent_geometry_globals) == 16 ? 1 : -1];
+#endif
 
 /* ---------- globals */
 
 static struct rasterizer_xbox_transparent_geometry_globals
 	rasterizer_xbox_transparent_geometry_globals = { 0 };
-
-extern struct rasterizer_transparent_geometry_debug_options_prefix
-	rasterizer_debug_options;
-extern struct rasterizer_window_begin_parameters global_window_parameters;
-extern struct rasterizer_transparent_geometry_hud_globals_prefix *hud_globals;
+/* port: the extra layers being drawn, within each other */
+static short rasterizer_xbox_transparent_geometry_layer_depth = 0;
 
 /* ---------- public code */
 
@@ -865,7 +803,7 @@ void rasterizer_transparent_geometry_groups_end(
 
 		if (global_window_parameters.window_index == main_get_window_count()-1)
 		{
-			long font_index = hud_globals->single_player_font_index;
+			long font_index = hud_globals->messaging.single_player_font.index;
 
 			if (font_index != NONE)
 			{
@@ -1073,9 +1011,9 @@ void rasterizer_transparent_geometry_group_draw(
 					group->previous_group_presorted_index),
 				dirty);
 
-		if (rasterizer_debug_options.debug_transparent_geometry)
+		if (rasterizer_debug_options.debug_transparent_geometry_enabled)
 		{
-			struct rasterizer_model_skinning_parameters skinning;
+			struct render_skinning skinning;
 
 			if (!TEST_FLAG(group->geometry_flags, _rasterizer_geometry_no_queue_bit) &&
 				group->shader &&
@@ -1088,9 +1026,9 @@ void rasterizer_transparent_geometry_group_draw(
 				short vertex_type =
 					rasterizer_transparent_geometry_get_primary_vertex_type(group);
 				boolean accumulate =
-					rasterizer_debug_options.transparent_geometry_index >=
+					rasterizer_debug_options.pad3 >=
 						RASTERIZER_TRANSPARENT_GEOMETRY_ALL_GROUPS_INDEX ||
-					rasterizer_debug_options.transparent_geometry_index < 0;
+					rasterizer_debug_options.pad3 < 0;
 				unsigned long seed;
 				real_argb_color color;
 				real minimum;
@@ -1159,7 +1097,7 @@ void rasterizer_transparent_geometry_group_draw(
 
 				csmemset(&pixel_shader, 0, sizeof(pixel_shader));
 
-				seed = rasterizer_debug_options.transparent_geometry_index +
+				seed = rasterizer_debug_options.pad3 +
 					group->sorted_index;
 				color.alpha = 1.0f;
 				color.red = real_seed_random(&seed);
@@ -1178,12 +1116,12 @@ void rasterizer_transparent_geometry_group_draw(
 				if (accumulate)
 				{
 					real intensity = PIN(
-						rasterizer_debug_options.transparent_geometry_intensity, 0.0f, 1.0f);
+						rasterizer_debug_options.pad3_scale, 0.0f, 1.0f);
 
 					if (intensity == 0.0f)
 						intensity = 0.03125f;
 
-					if (rasterizer_debug_options.transparent_geometry_index >=
+					if (rasterizer_debug_options.pad3 >=
 						RASTERIZER_TRANSPARENT_GEOMETRY_ALL_GROUPS_INDEX)
 					{
 						color.red *= intensity;
@@ -1331,7 +1269,7 @@ void rasterizer_transparent_geometry_group_draw(
 
 						if (!shader_ignores_effect(source_group->shader))
 						{
-							struct rasterizer_model_skinning_parameters skinning;
+							struct render_skinning skinning;
 
 							if (source_group->node_matrices && source_group->node_matrix_count)
 							{
@@ -1361,7 +1299,7 @@ void rasterizer_transparent_geometry_group_draw(
 				global_window_parameters.rasterizer_target == 0 &&
 				!dirty)
 			{
-				if (rasterizer_debug_options.active_camouflage_multipass ?
+				if (rasterizer_debug_options.active_camouflage_multipass_enabled ?
 					(group->shader &&
 						group->shader->base.type == _shader_type_model &&
 						group->effect_type == _render_model_effect_type_active_camouflage &&
@@ -1408,7 +1346,7 @@ void rasterizer_transparent_geometry_group_draw(
 
 				if (!TEST_FLAG(group->geometry_flags, _rasterizer_geometry_no_queue_bit))
 				{
-					struct rasterizer_model_skinning_parameters skinning;
+					struct render_skinning skinning;
 
 					if (group->node_matrices && group->node_matrix_count)
 					{
@@ -1698,7 +1636,7 @@ void rasterizer_transparent_geometry_group_draw(
 										"IDirect3DDevice8_SetVertexShaderConstant(global_d3d_device, VSH_CONSTANTS__TEXANIM_OFFSET, vsh_constants__texanim, 4)");
 								}
 
-								if (rasterizer_debug_options.zsprites &&
+								if (rasterizer_debug_options.zsprite_enabled &&
 									shader_effect->secondary_map_anchor ==
 										_shader_effect_secondary_map_anchor_zsprite &&
 									shader_effect->secondary_map.index != NONE &&
@@ -1780,7 +1718,7 @@ void rasterizer_transparent_geometry_group_draw(
 									combiner_index++;
 								}
 
-								if (rasterizer_debug_options.zsprites &&
+								if (rasterizer_debug_options.zsprite_enabled &&
 									shader_effect->secondary_map_anchor ==
 										_shader_effect_secondary_map_anchor_zsprite &&
 									shader_effect->secondary_map.index != NONE &&
@@ -2216,6 +2154,10 @@ void rasterizer_transparent_geometry_group_draw(
 											combiner_constant = 0x05;
 											break;
 
+										/* combiner_constant is left unassigned only by this default arm. Not reached unassigned: the
+										 * arm's assertion failure calls system_exit, which does not return in January
+										 * (0x47c960 jumps to halt_and_catch_fire 0x4f21c0, which loops or calls exit).
+										 * Source-policy approval pending (2026-09-27 audit). */
 										default:
 											match_vassert(
 												"c:\\halo\\SOURCE\\rasterizer\\xbox\\rasterizer_xbox_transparent_geometry.c",
@@ -2373,24 +2315,33 @@ void rasterizer_transparent_geometry_group_draw(
 							short map_index;
 							long result;
 
-							/* BUG (preserved for exact matching): January never advances layer_index, so the
-							 * loop redraws extra layer 0 for as long as the block is non-empty (the bytes push
-							 * index 0 and re-test the count). A corrected build should increment layer_index.
+							/* port: January never advanced layer_index, so a shader with extra layers
+							 * redrew its first one forever and the frame never ended (the Xbox's maps have
+							 * none; Halo PC's maps do: Hornets Nest's). Each layer is drawn once, but for
+							 * one that names no shader, and layers of layers only so deep: a layer that is
+							 * its shader, or a shader it is a layer of, would never end either.
 							 */
-							for (layer_index = 0;
-								layer_index < shader_transparent_chicago->chicago.extra_layers.count;
-								)
+							if (rasterizer_xbox_transparent_geometry_layer_depth < MAXIMUM_TRANSPARENT_GEOMETRY_LAYER_DEPTH)
 							{
-								struct transparent_geometry_group layer_group;
-
-								csmemcpy(&layer_group, group, sizeof(layer_group));
-								layer_group.sorted_index = NONE;
-								layer_group.shader = shader_definition_get(
-									TAG_BLOCK_GET_ELEMENT(
+								rasterizer_xbox_transparent_geometry_layer_depth++;
+								for (layer_index = 0;
+									layer_index < shader_transparent_chicago->chicago.extra_layers.count;
+									layer_index++)
+								{
+									struct transparent_geometry_group layer_group;
+									long layer_shader_index = TAG_BLOCK_GET_ELEMENT(
 										&shader_transparent_chicago->chicago.extra_layers,
 										layer_index,
-										struct tag_reference)->index);
-								rasterizer_transparent_geometry_group_draw(&layer_group, dirty);
+										struct tag_reference)->index;
+
+									if (layer_shader_index == NONE)
+										continue;
+									csmemcpy(&layer_group, group, sizeof(layer_group));
+									layer_group.sorted_index = NONE;
+									layer_group.shader = shader_definition_get(layer_shader_index);
+									rasterizer_transparent_geometry_group_draw(&layer_group, dirty);
+								}
+								rasterizer_xbox_transparent_geometry_layer_depth--;
 							}
 
 							rasterizer_set_vertex_shader_permutation(
@@ -2727,6 +2678,10 @@ void rasterizer_transparent_geometry_group_draw(
 											combiner_constant = 0x05;
 											break;
 
+										/* combiner_constant is left unassigned only by this default arm. Not reached unassigned: the
+										 * arm's assertion failure calls system_exit, which does not return in January
+										 * (0x47c960 jumps to halt_and_catch_fire 0x4f21c0, which loops or calls exit).
+										 * Source-policy approval pending (2026-09-27 audit). */
 										default:
 											match_vassert(
 												"c:\\halo\\SOURCE\\rasterizer\\xbox\\rasterizer_xbox_transparent_geometry.c",
@@ -3275,28 +3230,28 @@ void rasterizer_transparent_geometry_group_draw(
 										meter->flash_extension_source-1];
 							}
 
-							if (rasterizer_debug_options.debug_meter_shader)
+							if (rasterizer_debug_options.debug_meter_shader_enabled)
 							{
 								real debug_value = periodic_function_evaluate(
 									2,
 									global_frame_parameters.game_time_sec/
-										rasterizer_debug_options.transparent_geometry_intensity);
+										rasterizer_debug_options.pad3_scale);
 
 								meter_brightness =
-									rasterizer_debug_options.debug_shader_values[0] >= 0.0f ?
-										rasterizer_debug_options.debug_shader_values[0] : debug_value;
+									rasterizer_debug_options.f[0] >= 0.0f ?
+										rasterizer_debug_options.f[0] : debug_value;
 								flash_brightness =
-									rasterizer_debug_options.debug_shader_values[1] >= 0.0f ?
-										rasterizer_debug_options.debug_shader_values[1] : debug_value;
+									rasterizer_debug_options.f[1] >= 0.0f ?
+										rasterizer_debug_options.f[1] : debug_value;
 								meter_value =
-									rasterizer_debug_options.debug_shader_values[2] >= 0.0f ?
-										rasterizer_debug_options.debug_shader_values[2] : debug_value;
+									rasterizer_debug_options.f[2] >= 0.0f ?
+										rasterizer_debug_options.f[2] : debug_value;
 								gradient_value =
-									rasterizer_debug_options.debug_shader_values[3] >= 0.0f ?
-										rasterizer_debug_options.debug_shader_values[3] : debug_value;
+									rasterizer_debug_options.f[3] >= 0.0f ?
+										rasterizer_debug_options.f[3] : debug_value;
 								flash_extension =
-									rasterizer_debug_options.debug_shader_values[4] >= 0.0f ?
-										rasterizer_debug_options.debug_shader_values[4] : debug_value;
+									rasterizer_debug_options.f[4] >= 0.0f ?
+										rasterizer_debug_options.f[4] : debug_value;
 							}
 
 							flash_color.red = flash_brightness*meter->flash_color.red;
@@ -3456,8 +3411,8 @@ void rasterizer_transparent_geometry_group_draw(
 							pixel_shader.final_combiner_inputs_abcd = 0x0C180000;
 							pixel_shader.final_combiner_inputs_efg = 0x1C00;
 
-							if (rasterizer_debug_options.debug_meter_shader &&
-								rasterizer_debug_options.transparent_geometry_index)
+							if (rasterizer_debug_options.debug_meter_shader_enabled &&
+								rasterizer_debug_options.pad3)
 							{
 								csmemset(&pixel_shader, 0, sizeof(pixel_shader));
 								SetTextureStageStateSmart(0, D3DTSS_ALPHAKILL, D3DTALPHAKILL_DISABLE);
@@ -3465,7 +3420,7 @@ void rasterizer_transparent_geometry_group_draw(
 								pixel_shader.texture_modes = 1;
 								pixel_shader.combiner_count = 1;
 								pixel_shader.final_combiner_inputs_abcd =
-									(rasterizer_debug_options.transparent_geometry_index<=1 ?
+									(rasterizer_debug_options.pad3<=1 ?
 										0 : 0x10) + 8;
 							}
 
@@ -3531,7 +3486,7 @@ void rasterizer_transparent_geometry_group_draw(
 				{
 					rasterizer_transparent_geometry_group_draw(&groups2[group_index], TRUE);
 
-					if (rasterizer_debug_options.transparent_geometry_index)
+					if (rasterizer_debug_options.pad3)
 						rasterizer_xbox_transparent_geometry_globals.test_no_more_active_camo =
 							TRUE;
 				}

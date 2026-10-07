@@ -25,7 +25,12 @@ enum
 {
 	NUMBER_OF_SOUND_SAMPLE_RATES = 2,
 	MAXIMUM_SOUND_CHANNELS = 256,
+#ifdef HALO_CUSTOM_EDITION
+	/* (sound_preferences.c: the Xbox's four, and the port's four of PCM) */
+	NUMBER_OF_SOUND_CHANNEL_TYPES = 8,
+#else
 	NUMBER_OF_SOUND_CHANNEL_TYPES = 4,
+#endif
 	MAXIMUM_DSOUND_ERROR_STRING_LENGTH = 256,
 	MAXIMUM_DSOUND_ERROR_MESSAGE_LENGTH = 4096,
 	MAXIMUM_SOUND_PACKETS = 4,
@@ -131,12 +136,14 @@ typedef char sound_channel_sample_offset_offset_assert[
 	offsetof(struct sound_channel, sample_offset) == 0x64 ? 1 : -1];
 typedef char sound_channel_type_flags_offset_assert[
 	offsetof(struct sound_channel, type_flags) == 0x38 ? 1 : -1];
+#ifndef HALO_64BIT
 typedef char sound_channel_stream_offset_assert[
 	offsetof(struct sound_channel, stream) == 0x70 ? 1 : -1];
 
 typedef char sound_channel_size_assert[
 	sizeof(struct sound_channel) == 0x74 ? 1 : -1];
 
+#endif
 struct dsound_globals
 {
 	boolean initialized;
@@ -160,15 +167,21 @@ struct dsound_globals
 	byte reserved78c5[3];
 	real pause_gain;
 };
+#ifndef HALO_64BIT
 
 typedef char dsound_globals_type_first_channel_index_offset_assert[
 	offsetof(struct dsound_globals, type_first_channel_index) == 0x7808 ? 1 : -1];
+#ifndef HALO_CUSTOM_EDITION
+/* (past the per-type arrays, which have the port's four PCM types too with
+Custom Edition maps) */
 typedef char dsound_globals_direct_sound_offset_assert[
 	offsetof(struct dsound_globals, direct_sound) == 0x789C ? 1 : -1];
 typedef char dsound_globals_paused_offset_assert[
 	offsetof(struct dsound_globals, paused) == 0x78C4 ? 1 : -1];
 typedef char dsound_globals_pause_gain_offset_assert[
 	offsetof(struct dsound_globals, pause_gain) == 0x78C8 ? 1 : -1];
+#endif
+#endif
 
 struct sound_platform_definition
 {
@@ -210,9 +223,11 @@ struct sound_platform_definition
 		boolean gain_only);
 	real direct_path_gain;
 };
+#ifndef HALO_64BIT
 
 typedef char sound_platform_definition_direct_path_gain_offset_assert[
 	offsetof(struct sound_platform_definition, direct_path_gain) == 0x38 ? 1 : -1];
+#endif
 
 /* ---------- prototypes */
 
@@ -274,6 +289,43 @@ static struct sound_virtual_channel *virtual_channel_get(
 	short index);
 static short channel_get_state(
 	short index);
+static long dsound_volume_from_gain(
+	real gain,
+	long maximum_volume);
+static short dsound_virtual_get_state(
+	short virtual_channel_index);
+static void dsound_virtual_stop(
+	short virtual_channel_index);
+static void dsound_channel_update(
+	short channel_index);
+static void dsound_begin_scene(
+	void);
+static void dsound_end_scene(
+	void);
+static void dsound_dispose(
+	void);
+static void dsound_set_paused(
+	boolean paused);
+static void dsound_flush(
+	void);
+static void dsound_set_listener_properties(
+	struct platform_sound_listener_properties const *properties);
+static boolean dsound_initialize(
+	struct sound_preferences *preferences);
+static void dsound_virtual_set_location(
+	short virtual_channel_index,
+	boolean spatialized,
+	struct sound_location const *location,
+	real occlusion,
+	real obstruction,
+	boolean attenuate_direct_path);
+static void dsound_virtual_set_properties(
+	short virtual_channel_index,
+	struct platform_sound_channel_properties const *properties,
+	boolean gain_only);
+static void dsound_virtual_queue_sound(
+	short virtual_channel_index,
+	struct sound_permutation *sound);
 
 /* ---------- globals */
 
@@ -281,7 +333,7 @@ extern struct dsound_globals dsound_globals;
 extern unsigned long const sound_sample_rate_samples_per_second[NUMBER_OF_SOUND_SAMPLE_RATES];
 extern HRESULT interrupt_result;
 extern boolean debug_sound_channels;
-byte const dsound_effects_image[0x3A5C]=
+static byte const dsound_effects_image[0x3A5C]=
 {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1254,7 +1306,7 @@ unsigned long sound_samples_per_second(
 	return sound_sample_rate_samples_per_second[sample_rate];
 }
 
-long dsound_volume_from_gain(
+static long dsound_volume_from_gain(
 	real gain,
 	long maximum_volume)
 {
@@ -1328,7 +1380,7 @@ LPDIRECTSOUND dsound_get(
 	return dsound_globals.initialized ? dsound_globals.direct_sound : NULL;
 }
 
-short dsound_virtual_get_state(
+static short dsound_virtual_get_state(
 	short virtual_channel_index)
 {
 	struct sound_virtual_channel *vchannel= virtual_channel_get(virtual_channel_index);
@@ -1351,7 +1403,7 @@ short dsound_virtual_get_state(
 	return state;
 }
 
-void dsound_virtual_stop(
+static void dsound_virtual_stop(
 	short virtual_channel_index)
 {
 	struct sound_virtual_channel *vchannel= virtual_channel_get(virtual_channel_index);
@@ -1372,13 +1424,13 @@ void dsound_virtual_stop(
 	return;
 }
 
-void dsound_channel_update(
+static void dsound_channel_update(
 	short channel_index)
 {
 	return;
 }
 
-void dsound_begin_scene(
+static void dsound_begin_scene(
 	void)
 {
 	DirectSoundDoWork();
@@ -1394,7 +1446,7 @@ void dsound_begin_scene(
 	return;
 }
 
-void dsound_dispose(
+static void dsound_dispose(
 	void)
 {
 	long index;
@@ -1429,7 +1481,7 @@ void dsound_dispose(
 	return;
 }
 
-void dsound_end_scene(
+static void dsound_end_scene(
 	void)
 {
 	HRESULT result= IDirectSound_CommitDeferredSettings(dsound_globals.direct_sound);
@@ -1523,7 +1575,7 @@ void dsound_end_scene(
 	return;
 }
 
-void dsound_set_paused(
+static void dsound_set_paused(
 	boolean paused)
 {
 	short index;
@@ -1596,7 +1648,7 @@ void dsound_set_paused(
 	return;
 }
 
-void dsound_flush(
+static void dsound_flush(
 	void)
 {
 	short index;
@@ -1629,7 +1681,7 @@ void dsound_flush(
 	return;
 }
 
-void dsound_set_listener_properties(
+static void dsound_set_listener_properties(
 	struct platform_sound_listener_properties const *properties)
 {
 	if (!realcmp_epsilon(properties->position.x, dsound_globals.listener_position.x, 0.05f) ||
@@ -1719,7 +1771,7 @@ void dsound_set_listener_properties(
 	return;
 }
 
-boolean dsound_initialize(
+static boolean dsound_initialize(
 	struct sound_preferences *preferences)
 {
 	boolean success= FALSE;
@@ -1866,7 +1918,7 @@ boolean dsound_initialize(
 	return success;
 }
 
-void dsound_virtual_set_location(
+static void dsound_virtual_set_location(
 	short virtual_channel_index,
 	boolean spatialized,
 	struct sound_location const *location,
@@ -1890,7 +1942,7 @@ void dsound_virtual_set_location(
 	return;
 }
 
-void dsound_virtual_set_properties(
+static void dsound_virtual_set_properties(
 	short virtual_channel_index,
 	struct platform_sound_channel_properties const *properties,
 	boolean gain_only)
@@ -1905,7 +1957,7 @@ void dsound_virtual_set_properties(
 	return;
 }
 
-void dsound_virtual_queue_sound(
+static void dsound_virtual_queue_sound(
 	short virtual_channel_index,
 	struct sound_permutation *sound)
 {
@@ -2064,10 +2116,21 @@ static boolean dsound_initialize_channel(
 	{
 		wave_format.wfx.wFormatTag= WAVE_FORMAT_PCM;
 		wave_format.wfx.wBitsPerSample= 16;
+#ifdef HALO_CUSTOM_EDITION
+		/* (port: a PCM channel is of its type's channels and rate, as a
+		compressed one is: the Xbox's were only ever stereo 44 kHz) */
+		wave_format.wfx.nChannels= (WORD)(TEST_FLAG(type_flags, _sound_channel_stereo_bit) ? 2 : 1);
+		wave_format.wfx.nBlockAlign= (WORD)(2*wave_format.wfx.nChannels);
+		wave_format.wfx.nSamplesPerSec= sound_samples_per_second(
+			TEST_FLAG(type_flags, _sound_channel_44k_bit));
+		wave_format.wfx.nAvgBytesPerSec= wave_format.wfx.nSamplesPerSec*wave_format.wfx.nBlockAlign;
+		wave_format.wfx.cbSize= 0;
+#else
 		wave_format.wfx.nChannels= 2;
 		wave_format.wfx.nBlockAlign= 4;
 		wave_format.wfx.nSamplesPerSec= sound_sample_rate_samples_per_second[1];
 		wave_format.wfx.nAvgBytesPerSec= wave_format.wfx.nSamplesPerSec*4;
+#endif
 	}
 	else
 	{
@@ -2091,7 +2154,11 @@ static boolean dsound_initialize_channel(
 	stream_desc.lpwfxFormat= &wave_format.wfx;
 	stream_desc.dwFlags= 0;
 	stream_desc.lpfnCallback= dsound_channel_callback;
+#ifdef HALO_64BIT
+	stream_desc.lpvContext= (LPVOID)(__INTPTR_TYPE__)channel_index;
+#else
 	stream_desc.lpvContext= (LPVOID)channel_index;
+#endif
 
 	if (TEST_FLAG(type_flags, _sound_channel_3d_bit))
 	{
@@ -2182,7 +2249,11 @@ static void CALLBACK dsound_channel_callback(
 	void *packet_context,
 	unsigned long status)
 {
+#ifdef HALO_64BIT
+	short channel_index= (short)(__INTPTR_TYPE__)stream_context;
+#else
 	short channel_index= (short)stream_context;
+#endif
 
 	if (channel_index>=0 && channel_index<dsound_globals.actual_channel_count)
 	{
@@ -2346,12 +2417,21 @@ static void dsound_channel_set_properties(
 	boolean gain_only)
 {
 	struct sound_channel *channel= channel_get(channel_index);
+#ifdef HALO_64BIT
+	real prop_gain = PIN(properties->gain, 0.f, 1.f);
+	real gain= dsound_globals.pause_gain*prop_gain;
+#else
 	real gain= dsound_globals.pause_gain*properties->gain;
+#endif
 
 	match_assert(
 		"c:\\halo\\SOURCE\\sound\\sound_dsound_xbox.c",
 		980,
+#ifdef HALO_64BIT
+		prop_gain>=0.f && prop_gain<=1.f);
+#else
 		properties->gain>=0.f && properties->gain<=1.f);
+#endif
 	match_assert(
 		"c:\\halo\\SOURCE\\sound\\sound_dsound_xbox.c",
 		981,
@@ -2485,9 +2565,9 @@ static boolean dsound_channel_queue_packet(
 	{
 		if (channel->playing_permutation->cache_base_address)
 		{
-			if ((byte *)channel->playing_permutation->cache_base_address>=
+			if ((byte *)xbox_pointer(channel->playing_permutation->cache_base_address)>=
 					(byte *)physical_memory_get_sound_cache_base_address() &&
-				(byte *)channel->playing_permutation->cache_base_address+channel->playing_permutation->samples.size<=
+				(byte *)xbox_pointer(channel->playing_permutation->cache_base_address)+channel->playing_permutation->samples.size<=
 					(byte *)physical_memory_get_sound_cache_base_address()+SOUND_CACHE_SIZE)
 			{
 				struct sound_permutation *sound= channel->playing_permutation;
@@ -2497,7 +2577,7 @@ static boolean dsound_channel_queue_packet(
 
 				channel->packet_count++;
 
-				packet.pvBuffer= (byte *)sound->cache_base_address+channel->sample_offset;
+				packet.pvBuffer= (byte *)xbox_pointer(sound->cache_base_address)+channel->sample_offset;
 				packet.pdwCompletedSize= NULL;
 				packet.pdwStatus= NULL;
 				packet.prtTimestamp= 0;
@@ -2826,7 +2906,7 @@ static void dsound_error(
 			break;
 	}
 
-	error(_error_silent, "DirectSound:  '%s' (%s#%d)", message, result_name);
+	error(_error_silent, "DirectSound:  '%s' (%s#%d)", message, result_name, result);
 
 	return;
 }

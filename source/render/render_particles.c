@@ -34,14 +34,10 @@ symbols in this file:
 
 enum
 {
-#ifdef HALO_LINUX
 	/* render_particles lists every visible particle in an array of this size
 	without a bound check, so it must stay the size of the native builds'
 	particle pool (effects/particles.c, halo_port_capacity.h) */
 	MAXIMUM_RENDERED_PARTICLES = HALO_PORT_MAXIMUM_PARTICLES,
-#else
-	MAXIMUM_RENDERED_PARTICLES = 1024,
-#endif
 	MAXIMUM_RENDERED_PARTICLE_GROUPS = 512,
 };
 
@@ -65,7 +61,7 @@ typedef char rendered_particle_size_assert[
 
 /* ---------- globals */
 
-struct profile_section render_particles_section =
+static struct profile_section render_particles_section =
 {
 	"render_particles",
 	NONE,
@@ -109,7 +105,7 @@ boolean local_player_is_first_person(
 	return result;
 }
 
-int __cdecl compare_rendered_particles(
+static int __cdecl compare_rendered_particles(
 	void const *left_pointer,
 	void const *right_pointer)
 {
@@ -216,6 +212,12 @@ void render_particles(
 						rendered_particle->attached_to_first_person_weapon ==
 							previous_attached_to_first_person_weapon)
 					{
+						/* current_sprite_group is not initialised. Not reached unassigned: the first
+						 * rendered particle cannot take this arm, because its definition index differs from
+						 * the initial NONE (particle_new returns for NONE and otherwise calls
+						 * particle_definition_get, whose tag lookup halts unless the low word of the index
+						 * is non-negative; the field is written nowhere else). Source-policy approval
+						 * pending (2026-09-27 audit). */
 						(*current_sprite_group)++;
 					}
 					else
@@ -390,12 +392,9 @@ void render_particles(
 						rendered_particle++;
 					}
 
-					/* BUG (original): a fully culled group divides zero by zero.
-					 * A corrected non-matching build would store 0.0f when
-					 * built_particle_count is zero. */
 					((struct shader_effect_definition *)sprite_data.shader)->
-						secondary_map_radius =
-						total_radius / built_particle_count;
+						secondary_map_radius = built_particle_count ?
+						total_radius / built_particle_count : 0.0f;
 					build_sprites_end(&sprite_data);
 				}
 			}

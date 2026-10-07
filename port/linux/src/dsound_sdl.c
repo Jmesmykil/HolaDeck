@@ -159,9 +159,13 @@ static int ima_expand(int nibble, int *predictor, int *index)
 	return *predictor;
 }
 
-/* Xbox ADPCM: per block, a 4-byte header per channel (predictor, step
+/* Xbox ADPCM: per block, a 4-byte header per channel (first sample, step
 index), then 4-byte groups of eight nibbles, low nibble first, alternating
-between channels; 64 samples per channel */
+between channels; 64 samples per channel. The header's sample is the block's
+first, and the nibbles code the 63 after it: the 64th nibble only pads the
+block (the maps' sounds always have 0 there), and decoding it in place of the
+header's sample put a wrong sample in every 64, a buzz at 344 Hz in 22 kHz
+sounds. */
 static short *decode_adpcm(const unsigned char *source, unsigned long size, unsigned long channels,
 	unsigned long *frame_count)
 {
@@ -187,16 +191,19 @@ static short *decode_adpcm(const unsigned char *source, unsigned long size, unsi
 			int index = header[2] > 88 ? 88 : header[2];
 			unsigned long group, byte;
 
+			output[channel] = (short)predictor;
 			for (group = 0; group < 8; group++)
 			{
 				const unsigned char *nibbles = data + 4 * channels + (group * channels + channel) * 4;
 
 				for (byte = 0; byte < 4; byte++)
 				{
-					unsigned long sample = group * 8 + byte * 2;
+					/* nibble n codes sample n + 1 */
+					unsigned long sample = group * 8 + byte * 2 + 1;
 
 					output[sample * channels + channel] = (short)ima_expand(nibbles[byte] & 0xf, &predictor, &index);
-					output[(sample + 1) * channels + channel] = (short)ima_expand(nibbles[byte] >> 4, &predictor, &index);
+					if (sample + 1 < XBOX_ADPCM_BLOCK_SAMPLES)
+						output[(sample + 1) * channels + channel] = (short)ima_expand(nibbles[byte] >> 4, &predictor, &index);
 				}
 			}
 		}
@@ -467,7 +474,7 @@ static void *silent_clock_thread(void *parameter)
 			next.tv_nsec -= 1000000000L;
 			next.tv_sec++;
 		}
-		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL);
+		platform_sleep_until(&next);
 	}
 	return NULL;
 }
@@ -720,6 +727,15 @@ ULONG WINAPI IDirectSound_Release(LPDIRECTSOUND sound)
 
 VOID WINAPI DirectSoundDoWork(void)
 {
+	static unsigned long volume_read_at = (unsigned long)-1;
+
+	/* (audio.volume read again when Settings changes it: on the game's
+	thread, not the mixer's, whose lock the config's file I/O would hold) */
+	if (volume_read_at != config_changes())
+	{
+		volume_read_at = config_changes();
+		master_volume = (float)config_real("audio.volume");
+	}
 	streams_complete_finished();
 }
 

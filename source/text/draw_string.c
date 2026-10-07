@@ -452,6 +452,14 @@ void draw_string_set_font(
 	return;
 }
 
+/* port: the font the next string is drawn with (rasterizer_text.c's
+high-res text) */
+long draw_string_get_font(
+	void)
+{
+	return font_drawing_globals.current_font_index;
+}
+
 void draw_string_set_format(
 	short style,
 	short justification,
@@ -508,7 +516,7 @@ static void bitmap_draw_character(
 {
 	short format = draw_character_software_globals.bitmap->format;
 	short coverage_scale = (short)(color >> 24);
-	byte *glyph_pixels = (byte *)font->pixels.address + character->pixels_offset;
+	byte *glyph_pixels = (byte *)xbox_pointer(font->pixels.address) + character->pixels_offset;
 	word destination_color;
 	short row;
 
@@ -527,7 +535,7 @@ static void bitmap_draw_character(
 		long row_pitch = bitmap_format_get_bits_per_pixel(
 			draw_character_software_globals.bitmap->format) *
 			draw_character_software_globals.bitmap->width / 8;
-		byte *destination_pixel = (byte *)draw_character_software_globals.bitmap->base_address +
+		byte *destination_pixel = (byte *)xbox_pointer(draw_character_software_globals.bitmap->base_address) +
 			(x0 << draw_character_software_globals.encoding_shift) +
 			y0 * row_pitch;
 		byte *source_pixel = &glyph_pixels[character->bitmap_width * y + x];
@@ -1471,8 +1479,8 @@ void bitmap_draw_string(
 	rectangle2d const *clip,
 	char const *string)
 {
-	rectangle2d bitmap_bounds;
-	rectangle2d bitmap_clip;
+	rectangle2d adjusted_bounds;
+	rectangle2d adjusted_clip;
 	rectangle2d const *effective_bounds = bounds;
 	short format = bitmap->format;
 
@@ -1494,23 +1502,23 @@ void bitmap_draw_string(
 	if (!effective_bounds)
 	{
 		set_rectangle2d(
-			&bitmap_bounds,
+			&adjusted_bounds,
 			0,
 			0,
 			bitmap->width,
 			bitmap->height);
-		effective_bounds = &bitmap_bounds;
+		effective_bounds = &adjusted_bounds;
 	}
 
 	if (clip)
 	{
 		set_rectangle2d(
-			&bitmap_clip,
+			&adjusted_clip,
 			MAX(clip->x0, 0),
 			MAX(clip->y0, 0),
 			MIN(clip->x1, bitmap->width),
 			MIN(clip->y1, bitmap->height));
-		clip = &bitmap_clip;
+		clip = &adjusted_clip;
 	}
 
 	draw_string(

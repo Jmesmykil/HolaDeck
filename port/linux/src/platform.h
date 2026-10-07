@@ -98,32 +98,84 @@ host path below the data root. Components are matched case-insensitively
 against what exists on disk, as the Xbox file system is case-insensitive. */
 void platform_translate_path(const char *xbox_path, char *host_path, unsigned long host_path_size);
 const char *platform_data_root(void);
+/* on the desktop, when the data root has no maps folder: offers to copy it
+out of an Xbox disc image into destination (sdl_platform.c), and quits if
+the player declines; nonzero once destination has one */
+BOOL platform_offer_game_data(const char *destination);
+/* the macOS application's folder for its data and settings, when the game
+runs as an application (ChupathingyCE.app): ~/Library/Application
+Support/ChupathingyCE, made if need be, into path; 0 otherwise (and on
+other systems). An application's own files are not written: it is signed,
+and may be where its player cannot write (port_config.c) */
+int platform_app_folder(char *path, unsigned long size);
 const char *platform_save_root(void);
+#ifdef HALO_GAME_BROWSER
+/* a web page opened in the web browser (from any thread: the main thread
+opens it) */
+void platform_open_url(const char *url);
+#endif
 
 /* ---------- contiguous ("physical") memory
 
-The Xbox maps physical memory at virtual 0x80000000 + P. The layer reserves
-that window at start-up and hands out page-granular blocks from it, so the
-physical/virtual arithmetic the game and Direct3D rely on keeps working. */
+The Xbox maps physical memory at virtual 0x80000000 + P. The layer commits
+that window of the Xbox address space (cseries/xbox_address.h) at start-up and
+hands out page-granular blocks from it, so the physical/virtual arithmetic
+the game and Direct3D rely on keeps working. PLATFORM_CONTIGUOUS_BASE is an
+Xbox address. */
 
-#define PLATFORM_CONTIGUOUS_BASE 0x80000000UL
-#define PLATFORM_CONTIGUOUS_SIZE 0x08000000UL /* a 128 MB development kit */
-#define PLATFORM_ANY_PHYSICAL_ADDRESS 0xffffffffUL
+#define PLATFORM_CONTIGUOUS_BASE 0x80000000U
+#ifdef HALO_ANDROID
+/* a 128 MB development kit's: Android's guest image is linked just above it
+(port/android/include/halo_android_abi.h) */
+#define PLATFORM_CONTIGUOUS_SIZE 0x08000000U
+#else
+/* the desktop builds' (Linux, macOS, Windows): four times a 128 MB
+development kit's, for their larger texture cache (halo_port_capacity.h);
+port/windows/src/win32_memory_watch.c has the same */
+#define PLATFORM_CONTIGUOUS_SIZE 0x20000000U
+#endif
+#define PLATFORM_ANY_PHYSICAL_ADDRESS 0xffffffffU
+
+/* Custom Edition maps (Halo PC's, version 609: cache_files_windows.c, CE
+maps) are linked to a tag cache of their own, outside the Xbox window: their
+tags at 0x40440000 and their structure BSPs at its top. The layer maps it
+at start-up (xbox_memory.c): in the 64-bit build's Xbox address space, below
+its heap (xbox_heap.c); in a 32-bit build, at that host address. Nonzero
+once it is mapped: a Custom Edition map is not opened without it
+(cache_files_windows.c) */
+#define PLATFORM_CE_TAG_CACHE_BASE 0x40440000U
+#define PLATFORM_CE_TAG_CACHE_SIZE 0x01700000U
+#ifdef HALO_CUSTOM_EDITION
+extern int platform_ce_tag_cache_ready;
+#endif
+
+/* the host's page size, which protection works in (4 KB or more) */
+extern unsigned int platform_host_page_size;
 
 /* returns NULL on failure; physical_address places the block exactly */
 void *platform_contiguous_alloc(unsigned long size, unsigned long alignment,
 	unsigned long physical_address, DWORD protect);
 void platform_contiguous_free(void *address);
 BOOL platform_is_contiguous(const void *address);
-#define PLATFORM_PHYSICAL_TO_VIRTUAL(physical) ((void *)((unsigned long)(physical) | PLATFORM_CONTIGUOUS_BASE))
-#define PLATFORM_VIRTUAL_TO_PHYSICAL(address) ((unsigned long)(address) & ~PLATFORM_CONTIGUOUS_BASE)
+/* write guest memory like DMA does, ignoring its page protection */
+void platform_contiguous_write(void *destination, const void *source, size_t size);
+#define PLATFORM_PHYSICAL_TO_VIRTUAL(physical) xbox_pointer((unsigned long)(physical) | PLATFORM_CONTIGUOUS_BASE)
+#define PLATFORM_VIRTUAL_TO_PHYSICAL(address) ((unsigned long)XBOX_ADDRESS(address) & ~PLATFORM_CONTIGUOUS_BASE)
+
+/* ---------- the game's heap (xbox_heap.c), in the Xbox address space */
+
+void *xbox_heap_allocate(size_t size, BOOL zero);
+void xbox_heap_free(void *pointer);
+size_t xbox_heap_capacity(void *pointer);
+BOOL xbox_heap_contains(const void *pointer);
 
 /* ---------- guest memory write tracking (memory_watch.c)
 
 Pages of the contiguous window that the renderer has cached (textures) are
 write-protected; the first write marks them written and unprotects them.
 Page generations let a cache entry tell whether any of its pages changed
-since it was built. */
+since it was built. Tracking works in host pages; ranges are given as Xbox
+addresses. */
 
 void memory_watch_initialize(void);
 void memory_watch_protect(unsigned long address, unsigned long size);
@@ -138,6 +190,33 @@ void memory_watch_prepare_write(void *address, unsigned long size);
 void memory_watch_forget(void *address, unsigned long size);
 
 /* ---------- time */
+
+/* sleep until a CLOCK_MONOTONIC deadline (clock_nanosleep with
+TIMER_ABSTIME, which macOS lacks) */
+static inline void platform_sleep_until(const struct timespec *deadline)
+{
+#ifndef __APPLE__
+	clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, deadline, NULL);
+#else
+	for (;;)
+	{
+		struct timespec now, remaining;
+
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		remaining.tv_sec = deadline->tv_sec - now.tv_sec;
+		remaining.tv_nsec = deadline->tv_nsec - now.tv_nsec;
+		if (remaining.tv_nsec < 0)
+		{
+			remaining.tv_nsec += 1000000000L;
+			remaining.tv_sec--;
+		}
+		if (remaining.tv_sec < 0)
+			return;
+		if (nanosleep(&remaining, NULL) == 0)
+			return;
+	}
+#endif
+}
 
 /* 100 ns intervals since 1601-01-01, as FILETIME uses */
 void platform_unix_time_to_filetime(unsigned long seconds, unsigned long nanoseconds, FILETIME *file_time);

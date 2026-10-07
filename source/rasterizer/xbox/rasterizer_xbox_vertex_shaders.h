@@ -34,4 +34,10 @@ void rasterizer_vertex_shaders_dispose(
 
 extern struct vertex_shader_entry vertex_shader_table[NUMBER_OF_VERTEX_SHADERS];
 
+/* Public native build loads retail shader assets supplied by the owner. */
+#if defined(HALO_ANDROID) || defined(__linux__)
+#define HALO_PUBLIC_EXTERNAL_SHADERS 1
+boolean rasterizer_vertex_shader_assets_load(void);
+#endif
+
 #endif // __RASTERIZER_XBOX_VERTEX_SHADERS_H

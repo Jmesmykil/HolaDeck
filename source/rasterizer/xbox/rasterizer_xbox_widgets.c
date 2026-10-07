@@ -78,12 +78,14 @@ symbols in this file:
 #include "math/real_math.h"
 #include "rasterizer/common/rasterizer_common.h"
 #include "rasterizer/rasterizer_geometry.h"
-#include "rasterizer/rasterizer_transparent_geometry.h"
 
 #include <xtl.h>
 #include "rasterizer/xbox/rasterizer_xbox.h"
+#include "rasterizer/xbox/rasterizer_xbox_pixel_shader.h"
 #include "rasterizer/rasterizer_widgets.h"
 #include "rasterizer/rasterizer.h"
+#include "rasterizer/rasterizer_transparent_geometry.h"
+#include "rasterizer/rasterizer_console_vars.h"
 
 /* ---------- constants */
 
@@ -108,8 +110,23 @@ struct bitmap_data;
 struct shader;
 struct vertex_buffer;
 
+#ifdef HALO_64BIT
+struct rasterizer_widget_window_parameters
+#else
 struct transparent_geometry_group
+#endif
 {
+#ifdef HALO_64BIT
+	byte reserved00[8];
+	real_point3d camera_position;
+	real_vector3d camera_forward;
+	byte reserved20[0x14];
+	rectangle2d viewport_bounds;
+	byte reserved3C[0x30];
+	real_matrix4x3 world_to_view;
+	byte reservedA0[0x100];
+	real projection_matrix[4][4];
+#else
 	unsigned long geometry_flags;
 	long object_index;
 	long source_object_index;
@@ -143,48 +160,19 @@ struct transparent_geometry_group
 	byte reserved9C;
 	boolean cortana_hack;
 	byte reserved9E[2];
+#endif
 };
 
+#ifdef HALO_64BIT
+typedef char rasterizer_widget_window_parameters_offset_assert[
+	offsetof(
+		struct rasterizer_widget_window_parameters,
+		projection_matrix) == 0x1A0 ? 1 : -1];
+#else
 typedef char transparent_geometry_group_size_assert[
 	sizeof(struct transparent_geometry_group) == 0xA0 ? 1 : -1];
 
-
-struct rasterizer_debug_options
-{
-	byte reserved00[0x44];
-	boolean lens_flare_occlusion_enabled;
-	boolean lens_flare_occlusion_debug;
-	byte reserved46[0xE];
-	unsigned long zbias;
-	byte reserved58[0x10];
-};
-
-typedef char rasterizer_debug_options_size_assert[
-	sizeof(struct rasterizer_debug_options) == 0x68 ? 1 : -1];
-typedef char rasterizer_debug_options_zbias_offset_assert[
-	offsetof(struct rasterizer_debug_options, zbias) == 0x54 ? 1 : -1];
-
-struct pixel_shader_definition
-{
-	unsigned long alpha_inputs[8];
-	unsigned long final_combiner_inputs_abcd;
-	unsigned long final_combiner_inputs_efg;
-	unsigned long constant_0[8];
-	unsigned long constant_1[8];
-	unsigned long alpha_outputs[8];
-	unsigned long rgb_inputs[8];
-	unsigned long compare_mode;
-	unsigned long final_combiner_constant_0;
-	unsigned long final_combiner_constant_1;
-	unsigned long rgb_outputs[8];
-	unsigned long combiner_count;
-	unsigned long texture_modes;
-	unsigned long dot_mapping;
-	unsigned long input_texture;
-	unsigned long c0_mapping;
-	unsigned long c1_mapping;
-	unsigned long final_combiner_constants;
-};
+#endif
 
 /* ---------- prototypes */
 
@@ -197,8 +185,6 @@ static boolean rasterizer_widget_project_billboard(
 /* ---------- globals */
 
 extern D3DDevice *global_d3d_device;
-extern struct rasterizer_debug_options rasterizer_debug_options;
-extern struct rasterizer_window_begin_parameters global_window_parameters;
 extern struct pixel_shader_definition pixel_shader;
 
 static boolean warned_about_too_many_transparent_geometry_groups;

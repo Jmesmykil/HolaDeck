@@ -166,19 +166,23 @@ symbols in this file:
 /* ---------- headers */
 
 #include "cseries.h"
-#include "ai/actor_looking.h"
+#include "math/real_math.h"
 
 #include "actors.h"
 #include "actor_definitions.h"
 #include "ai_debug.h"
 #include "ai_profile.h"
 #include "cseries/errors.h"
+#include "game/game.h"
 #include "items/weapon_definitions.h"
 #include "main/console.h"
 #include "physics/collisions.h"
 #include "physics/collision_usage.h"
 #include "props.h"
 #include "units/units.h"
+#ifdef HALO_64BIT
+#include "game/game.h"
+#endif
 
 
 /* ---------- constants */
@@ -847,6 +851,10 @@ static long actor_look_idle_timer(
 		time_lower_bound = looking_definition->idle_look_time_lower_bound;
 		time_upper_bound = looking_definition->idle_look_time_upper_bound;
 		break;
+	/* time_lower_bound and time_upper_bound are left unassigned only by this default arm. Not reached unassigned: the
+	 * arm's assertion failure calls system_exit, which does not return in January
+	 * (0x47c960 jumps to halt_and_catch_fire 0x4f21c0, which loops or calls exit).
+	 * Source-policy approval pending (2026-09-27 audit). */
 	default:
 		match_vassert(
 			"c:\\halo\\SOURCE\\ai\\actor_looking.c",
@@ -1111,14 +1119,10 @@ static boolean actor_look_decode_direction(
 			switch (specification->type)
 			{
 			case _direction_specification_movement:
-				/* BUG (preserved for exact matching): January loads the point's
-				 * z field twice (actor + 0x514). A corrected diagnostic should
-				 * print the y field as its second point component.
-				 */
 				sprintf(temporary, "denormalized %f: %smoving (p%f %f %f) (v%f %f %f)",
 					magnitude, actor->control.moving ? "" : "not ",
 					actor->control.moving_towards_point.x,
-					actor->control.moving_towards_point.z,
+					actor->control.moving_towards_point.y,
 					actor->control.moving_towards_point.z,
 					actor->control.moving_towards_vector.i,
 					actor->control.moving_towards_vector.j,
@@ -1426,10 +1430,10 @@ void actor_look_update(
 		if (actor_combat_currently_firing_burst(actor_index) &&
 			!actor->orders.combat.abort_burst)
 		{
-			struct direction_specification burst_specification;
+			struct direction_specification temporary_direction;
 
-			burst_specification.type = _direction_specification_target;
-			if (actor_look_decode_direction(actor_index, &burst_specification, &primary_vector))
+			temporary_direction.type = _direction_specification_target;
+			if (actor_look_decode_direction(actor_index, &temporary_direction, &primary_vector))
 			{
 				primary_priority = _primary_priority_locked_aiming;
 				aiming_at_target = TRUE;
@@ -1891,22 +1895,22 @@ update_facing:
 			}
 			else
 			{
-				real_vector2d facing2d;
-				real_vector2d aiming2d;
-				real_vector2d fixed2d;
+				real_vector2d desired_facing;
+				real_vector2d desired_aiming;
+				real_vector2d stationary_facing;
 
-				facing2d.i = actor->control.desired_facing_vector.i;
-				facing2d.j = actor->control.desired_facing_vector.j;
-				aiming2d.i = actor->control.desired_aiming_vector.i;
-				aiming2d.j = actor->control.desired_aiming_vector.j;
-				fixed2d.i = actor->control.fixed_stationary_facing_vector.i;
-				fixed2d.j = actor->control.fixed_stationary_facing_vector.j;
+				desired_facing.i = actor->control.desired_facing_vector.i;
+				desired_facing.j = actor->control.desired_facing_vector.j;
+				desired_aiming.i = actor->control.desired_aiming_vector.i;
+				desired_aiming.j = actor->control.desired_aiming_vector.j;
+				stationary_facing.i = actor->control.fixed_stationary_facing_vector.i;
+				stationary_facing.j = actor->control.fixed_stationary_facing_vector.j;
 
-				valid = normalize2d(&facing2d) != 0.0f &&
-					normalize2d(&aiming2d) != 0.0f &&
-					normalize2d(&fixed2d) != 0.0f &&
-					dot_product2d(&fixed2d, &facing2d) > stationary_cosine &&
-					dot_product2d(&aiming2d, &fixed2d) > stationary_cosine;
+				valid = normalize2d(&desired_facing) != 0.0f &&
+					normalize2d(&desired_aiming) != 0.0f &&
+					normalize2d(&stationary_facing) != 0.0f &&
+					dot_product2d(&stationary_facing, &desired_facing) > stationary_cosine &&
+					dot_product2d(&desired_aiming, &stationary_facing) > stationary_cosine;
 			}
 
 			if (!valid)

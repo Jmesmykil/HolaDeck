@@ -59,13 +59,31 @@ symbols in this file:
 
 /* ---------- headers */
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+#include "halo_phase_profile.h"
+extern void platform_log(char const *format, ...);
+/* CPU elapsed scopes. 0..7 are retained aggregates; 8..15 are nested
+ * details: particles, particle systems, weather, transparent draw, trails,
+ * interface, widgets, object shadows. Do not sum details into aggregates. */
+static uint64_t view_pass_us[16], view_pass_calls[16], view_pass_last_frame;
+static unsigned view_cluster_peak, view_surface_peak;
+#define VIEW_PASS(slot, call) do { uint64_t begin = halo_profile_now_us(); call; \
+    view_pass_us[slot] += halo_profile_now_us() - begin; view_pass_calls[slot]++; } while (0)
+#else
+#define VIEW_PASS(slot, call) do { call; } while (0)
+#endif
+
 #include "cseries.h"
+#include "main.h"
+#include "cseries/errors.h"
 #include "render.h"
 #include "render_cameras_internal.h"
 #include "render_particles.h"
 #include "objects.h"
+#include "render_sprite.h"
 #include "scenario.h"
 #include "structure_bsp_definitions.h"
+#include "effects/player_effects.h"
 #include "structures/structure_visibility.h"
 #include "rasterizer.h"
 #include "rasterizer/rasterizer_lights.h"
@@ -76,11 +94,14 @@ symbols in this file:
 #include "game.h"
 #include "game_engine.h"
 #include "interface/first_person_weapons.h"
+#include "interface/interface.h"
 #include "editor_stubs.h"
 #include "render_debug.h"
 #include "objects/object_lights_rendering.h"
 #include "effects/particle_systems.h"
 #include "effects/weather_particle_systems.h"
+#include "main/main.h"
+#include "structures/structures.h"
 
 /* ---------- constants */
 
@@ -106,11 +127,7 @@ enum
 
 /* ---------- macros */
 
-#ifdef HALO_LINUX
 #define RASTERIZER_TARGET_RENDER_PRIMARY_WIDTH halo_screen_width()
-#else
-#define RASTERIZER_TARGET_RENDER_PRIMARY_WIDTH 640
-#endif
 #define RASTERIZER_TARGET_RENDER_PRIMARY_HEIGHT 480
 
 /* ---------- structures */
@@ -132,31 +149,7 @@ static void render_player_frame(
 	struct render_window *window,
 	const point2d *screenshot_combined_index);
 
-void structure_get_planar_fog(
-	short cluster_index,
-	struct render_fog *fog);
-void player_effect_get_screen_flash(
-	short local_player_index,
-	struct render_screen_flash *screen_flash);
-void build_sprite_prepare_for_window(
-	void);
 void render_sky(
-	void);
-void render_objects(
-	void);
-void render_object_shadows(
-	void);
-void rasterizer_transparent_geometry_stop(
-	void);
-void interface_draw_fullscreen_overlays(
-	void);
-void rasterizer_debug_draw(
-	void);
-void render_debug(
-	void);
-void progress_bar_eachframe(
-	void);
-short main_get_window_count(
 	void);
 
 /* ---------- globals */
@@ -166,7 +159,6 @@ struct render_globals render;
 static boolean render_invalid_fog_warning_displayed;
 
 extern short global_screenshot_count;
-extern short global_screenshot_size;
 
 boolean render_contrails_enabled = TRUE;
 boolean render_particles_enabled = TRUE;
@@ -238,13 +230,9 @@ static void render_nonplayer_frame(
 		break;
 
 	case 1:
-#ifdef HALO_LINUX
 		halo_screen_ui_offset(TRUE);
 		game_engine_nonplayer_post_rasterize();
 		halo_screen_ui_offset(FALSE);
-#else
-		game_engine_nonplayer_post_rasterize();
-#endif
 		break;
 
 	default:
@@ -282,13 +270,9 @@ void render_frame_pregame(
 	rasterizer_parameters.rasterizer_target = 0;
 	rasterizer_window_begin(&rasterizer_parameters);
 
-#ifdef HALO_LINUX
 	halo_screen_ui_offset(TRUE);
 	render_ui_widgets(0, &window->rasterizer_camera.viewport_bounds);
 	halo_screen_ui_offset(FALSE);
-#else
-	render_ui_widgets(0, &window->rasterizer_camera.viewport_bounds);
-#endif
 	bink_playback_render();
 
 	{
@@ -356,22 +340,22 @@ static void render_window(
 	parameters.window_index = render.window_index;
 	parameters.fog = render.fog;
 
-	structure_visibility_compute();
+	VIEW_PASS(0, structure_visibility_compute());
 	player_effect_get_screen_flash(local_player_index, &parameters.screen_flash);
 	rasterizer_window_begin(&parameters);
 
 	if (!bink_playback_in_progress())
 	{
 		build_sprite_prepare_for_window();
-		render_sky();
-		first_person_weapon_render_update();
-		lights_preprocess_scene();
-		render_objects();
-		structure_render_preprocess();
-		structure_render_lightmaps();
+		VIEW_PASS(7, render_sky());
+		VIEW_PASS(1, first_person_weapon_render_update());
+		VIEW_PASS(3, lights_preprocess_scene());
+		VIEW_PASS(1, render_objects());
+		VIEW_PASS(2, structure_render_preprocess());
+		VIEW_PASS(2, structure_render_lightmaps());
 		rasterizer_lens_flares_submit_occlusion_tests();
-		render_object_shadows();
-		lights_render_diffuse();
+		VIEW_PASS(3, VIEW_PASS(15, render_object_shadows()));
+		VIEW_PASS(3, lights_render_diffuse());
 
 		rasterizer_decals_begin(_decal_layer_light);
 		for (rendered_cluster_index = 0;
@@ -391,7 +375,7 @@ static void render_window(
 		}
 		rasterizer_decals_end();
 
-		structure_render_diffuse_texture();
+		VIEW_PASS(2, structure_render_diffuse_texture());
 
 		rasterizer_decals_begin(_decal_layer_primary);
 		for (rendered_cluster_index = 0;
@@ -411,19 +395,19 @@ static void render_window(
 		}
 		rasterizer_decals_end();
 
-		lights_render_specular();
-		structure_render_specular_lightmaps();
-		structure_render_reflection_lightmap_masks();
-		structure_render_reflection_mirrors();
-		structure_render_reflections();
-		structure_render_transparent_geometry();
-		structure_render_fog();
+		VIEW_PASS(3, lights_render_specular());
+		VIEW_PASS(2, structure_render_specular_lightmaps());
+		VIEW_PASS(2, structure_render_reflection_lightmap_masks());
+		VIEW_PASS(2, structure_render_reflection_mirrors());
+		VIEW_PASS(2, structure_render_reflections());
+		VIEW_PASS(4, structure_render_transparent_geometry());
+		VIEW_PASS(2, structure_render_fog());
 		game_engine_post_rasterize_objects();
-		weather_particle_systems_render();
-		render_particles();
-		particle_systems_render();
-		render_contrails_normal();
-		rasterizer_transparent_geometry_draw(TRUE);
+		VIEW_PASS(4, VIEW_PASS(10, weather_particle_systems_render()));
+		VIEW_PASS(4, VIEW_PASS(8, render_particles()));
+		VIEW_PASS(4, VIEW_PASS(9, particle_systems_render()));
+		VIEW_PASS(4, VIEW_PASS(12, render_contrails_normal()));
+		VIEW_PASS(4, VIEW_PASS(11, rasterizer_transparent_geometry_draw(TRUE)));
 
 		rasterizer_decals_begin(_decal_layer_water);
 		for (rendered_cluster_index = 0;
@@ -434,20 +418,16 @@ static void render_window(
 		}
 		rasterizer_decals_end();
 
-		structure_render_detail_objects();
-		rasterizer_transparent_geometry_draw(FALSE);
+		VIEW_PASS(5, structure_render_detail_objects());
+		VIEW_PASS(4, VIEW_PASS(11, rasterizer_transparent_geometry_draw(FALSE)));
 		rasterizer_transparent_geometry_stop();
-		structure_render_fog_screen();
+		VIEW_PASS(2, structure_render_fog_screen());
 		rasterizer_lens_flares_draw();
-		interface_draw_screen();
+		VIEW_PASS(6, VIEW_PASS(13, interface_draw_screen()));
 		rasterizer_screen_flash();
-#ifdef HALO_LINUX
 		halo_screen_ui_offset(TRUE);
-		render_ui_widgets(local_player_index, &rasterizer_camera->viewport_bounds);
+		VIEW_PASS(6, VIEW_PASS(14, render_ui_widgets(local_player_index, &rasterizer_camera->viewport_bounds)));
 		halo_screen_ui_offset(FALSE);
-#else
-		render_ui_widgets(local_player_index, &rasterizer_camera->viewport_bounds);
-#endif
 	}
 
 	bink_playback_render();
@@ -457,6 +437,24 @@ static void render_window(
 	rasterizer_debug_draw();
 	rasterizer_window_end();
 	profile_render_window_end();
+#if defined(__linux__) || defined(HALO_ANDROID)
+    if ((unsigned)render.rendered_cluster_count > view_cluster_peak) view_cluster_peak = render.rendered_cluster_count;
+    if ((unsigned)render.environment_surface_count > view_surface_peak) view_surface_peak = render.environment_surface_count;
+    if (halo_guest_phases.frame >= view_pass_last_frame + 300) {
+        unsigned slot;
+        char const *map = game_engine_running() ? main_get_multiplayer_map_name() : main_get_map_name();
+        platform_log("[view] frame=%llu map=%s clusters_peak=%u surfaces_peak=%u mirror=%d",
+            (unsigned long long)halo_guest_phases.frame, map ? map : "unknown", view_cluster_peak, view_surface_peak, has_mirror);
+        for (slot = 0; slot < 16; slot++) {
+            platform_log("[view_pass] frame=%llu slot=%u calls=%llu cpu_us=%llu",
+                (unsigned long long)halo_guest_phases.frame, slot,
+                (unsigned long long)view_pass_calls[slot], (unsigned long long)view_pass_us[slot]);
+            view_pass_us[slot] = view_pass_calls[slot] = 0;
+        }
+        view_cluster_peak = view_surface_peak = 0;
+        view_pass_last_frame = halo_guest_phases.frame;
+    }
+#endif
 
 	return;
 }
@@ -472,6 +470,12 @@ static void render_player_frame(
 	struct render_frustum rasterizer_frustum;
 	struct render_mirror mirror;
 
+#if defined(__linux__) && !defined(HALO_ANDROID)
+    extern void crowd_benchmark_camera(struct render_window *window);
+    extern void crowd_benchmark_render_time(uint64_t elapsed);
+    uint64_t crowd_render_start = halo_profile_now_us();
+    crowd_benchmark_camera(window);
+#endif
 	camera = &window->render_camera;
 	has_mirror = FALSE;
 
@@ -608,6 +612,9 @@ static void render_player_frame(
 		&rasterizer_frustum,
 		_render_target_primary,
 		has_mirror);
+#if defined(__linux__) && !defined(HALO_ANDROID)
+    crowd_benchmark_render_time(halo_profile_now_us() - crowd_render_start);
+#endif
 
 	return;
 }
@@ -628,12 +635,8 @@ void render_frame(
 	render.frame_index++;
 	render.time_delta_since_tick_sec = time_delta_since_tick_sec;
 	memset(&parameters, 0, sizeof(parameters));
-#ifdef HALO_LINUX
 	/* continuous between ticks (render_interpolation.c) */
 	parameters.game_time_sec = render_interpolation_game_time_sec(game_time_get());
-#else
-	parameters.game_time_sec = (real)game_time_get() * (1.0f / TICKS_PER_SECOND);
-#endif
 	rasterizer_frame_begin(&parameters);
 	rasterizer_windows_begin();
 
@@ -670,13 +673,9 @@ void render_frame(
 		render_nonplayer_frame(window, window_type);
 	}
 
-#ifdef HALO_LINUX
 	halo_screen_ui_offset(TRUE);
 	progress_bar_eachframe();
 	halo_screen_ui_offset(FALSE);
-#else
-	progress_bar_eachframe();
-#endif
 	rasterizer_windows_end();
 	rasterizer_frame_end();
 

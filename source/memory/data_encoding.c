@@ -528,6 +528,10 @@ void *data_decode_array(
 	case -8:
 		element_count = (long)data_decode_int64(state);
 		break;
+	/* element_count is left unassigned only by this default arm. Not reached unassigned: the
+	 * arm's assertion failure calls system_exit, which does not return in January
+	 * (0x47c960 jumps to halt_and_catch_fire 0x4f21c0, which loops or calls exit).
+	 * Source-policy approval pending (2026-09-27 audit). */
 	default:
 		display_assert(NULL, "c:\\halo\\SOURCE\\memory\\data_encoding.c", 370, TRUE);
 		system_exit(-1);
@@ -553,7 +557,9 @@ char *data_decode_string(
 	char *string = state->buffer + state->offset;
 	short string_length = 0;
 
-	while (state->offset + string_length < state->buffer_size)
+	/* port: no longer than the field holds (the packet's field has room for
+	maximum_length characters and the terminator) */
+	while (state->offset + string_length < state->buffer_size && string_length <= (short)maximum_length)
 	{
 		if (!string[string_length])
 		{

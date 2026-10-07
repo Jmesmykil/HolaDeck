@@ -142,6 +142,9 @@ symbols in this file:
 
 /* ---------- headers */
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+#include "halo_phase_profile.h"
+#endif
 #include "cseries.h"
 #include "cseries/profile.h"
 #include "vehicles.h"
@@ -255,7 +258,8 @@ struct physics_mass_point_definition
 
 struct vehicle_animation
 {
-	byte unused0[0x5c];
+	struct animation_aiming_screen_bounds steering_screen_bounds;
+	long unused[0x11];
 	struct tag_block animations;
 	struct tag_block suspensions;
 };
@@ -284,16 +288,6 @@ struct scenario_vehicle
 };
 
 /* ---------- prototypes */
-
-void aiming_screen_apply(
-	struct animation const *animation,
-	struct vehicle_animation const *vehicle_animation,
-	real yaw,
-	real pitch,
-	struct real_orientation *node_orientations);
-short unit_update_animation(
-	long unit_index,
-	struct unit_animation_update_data *update_data);
 
 /* NOTE: code_001a5e50 and code_001a6290 are file statics in January, but they
 are not reconstructed yet. They are declared here rather than defined so that
@@ -1403,18 +1397,18 @@ void vehicle_preprocess_node_orientations(
 		return;
 
 	if (animation->animations.count>0
-		&& ((short *)animation->animations.address)[0]!=NONE)
+		&& ((short *)xbox_pointer(animation->animations.address))[0]!=NONE)
 	{
 		aiming_screen_apply(TAG_BLOCK_GET_ELEMENT(&graph->animations,
-			((short *)animation->animations.address)[0], struct animation),
-			animation, vehicle->vehicle.turn, 0.0f, node_orientations);
+			((short *)xbox_pointer(animation->animations.address))[0], struct animation),
+			&animation->steering_screen_bounds, vehicle->vehicle.turn, 0.0f, node_orientations);
 	}
 
 	if (animation->animations.count>1
-		&& ((short *)animation->animations.address)[1]!=NONE)
+		&& ((short *)xbox_pointer(animation->animations.address))[1]!=NONE)
 	{
 		overlay = TAG_BLOCK_GET_ELEMENT(&graph->animations,
-			((short *)animation->animations.address)[1], struct animation);
+			((short *)xbox_pointer(animation->animations.address))[1], struct animation);
 
 		value = (triple_product3d(&vehicle->object.up, &vehicle->object.forward,
 			&vehicle->object.translational_velocity)/definition->unknown2f8+1.0f)*0.5f;
@@ -1424,10 +1418,10 @@ void vehicle_preprocess_node_orientations(
 	}
 
 	if (animation->animations.count>2
-		&& ((short *)animation->animations.address)[2]!=NONE)
+		&& ((short *)xbox_pointer(animation->animations.address))[2]!=NONE)
 	{
 		overlay = TAG_BLOCK_GET_ELEMENT(&graph->animations,
-			((short *)animation->animations.address)[2], struct animation);
+			((short *)xbox_pointer(animation->animations.address))[2], struct animation);
 
 		if (vehicle->vehicle.speed<0.0f)
 			value = 0.5f-vehicle->vehicle.speed/definition->unknown2fc*0.5f;
@@ -1440,10 +1434,10 @@ void vehicle_preprocess_node_orientations(
 
 
 	if (animation->animations.count>3
-		&& ((short *)animation->animations.address)[3]!=NONE)
+		&& ((short *)xbox_pointer(animation->animations.address))[3]!=NONE)
 	{
 		overlay = TAG_BLOCK_GET_ELEMENT(&graph->animations,
-			((short *)animation->animations.address)[3], struct animation);
+			((short *)xbox_pointer(animation->animations.address))[3], struct animation);
 
 		value = vehicle_dot_product3d_test(&vehicle->object.translational_velocity, &vehicle->object.forward);
 		value = PIN(value, 0.0f, 1.0f)/(real)fabs(definition->unknown2f8);
@@ -1453,17 +1447,17 @@ void vehicle_preprocess_node_orientations(
 	}
 
 	if (animation->animations.count>4
-		&& ((short *)animation->animations.address)[4]!=NONE)
+		&& ((short *)xbox_pointer(animation->animations.address))[4]!=NONE)
 	{
 		TAG_BLOCK_GET_ELEMENT(&graph->animations,
-			((short *)animation->animations.address)[4], struct animation);
+			((short *)xbox_pointer(animation->animations.address))[4], struct animation);
 	}
 
 	if (animation->animations.count>5
-		&& ((short *)animation->animations.address)[5]!=NONE)
+		&& ((short *)xbox_pointer(animation->animations.address))[5]!=NONE)
 	{
 		overlay = TAG_BLOCK_GET_ELEMENT(&graph->animations,
-			((short *)animation->animations.address)[5], struct animation);
+			((short *)xbox_pointer(animation->animations.address))[5], struct animation);
 
 		if (definition->wheel_circumference>0.0f)
 			value = vehicle->vehicle.wheel/definition->wheel_circumference;
@@ -2108,7 +2102,7 @@ static void update_alien_scout_physics(
 		vehicle->definition_index);
 	struct physics_definition *physics = physics_definition_get(
 		definition->unit.object.physics.index);
-	real_matrix4x3 matrix;
+	real_matrix4x3 vehicle_matrix;
 	real_vector3d local_velocity;
 	real_vector3d magic_force;
 	real_vector3d magic_torque;
@@ -2140,9 +2134,9 @@ static void update_alien_scout_physics(
 		real_vector3d const *object_up = &vehicle->object.up;
 		real_vector3d const *object_angular_velocity =
 			&vehicle->object.angular_velocity;
-		matrix4x3_from_point_and_vectors(&matrix, &vehicle->object.position,
+		matrix4x3_from_point_and_vectors(&vehicle_matrix, &vehicle->object.position,
 			object_forward, object_up);
-		matrix4x3_inverse_transform_vector(&matrix,
+		matrix4x3_inverse_transform_vector(&vehicle_matrix,
 			&vehicle->object.translational_velocity, &local_velocity);
 
 		if (vehicle->vehicle.hover>0.0f)
@@ -2171,7 +2165,7 @@ static void update_alien_scout_physics(
 			}
 
 			limit3d(&acceleration, maximum_acceleration);
-			matrix4x3_transform_vector(&matrix, &acceleration, &acceleration);
+			matrix4x3_transform_vector(&vehicle_matrix, &acceleration, &acceleration);
 
 			scale = physics->mass*vehicle->vehicle.hover;
 			magic_force.i += acceleration.i*scale;
@@ -2424,6 +2418,9 @@ boolean vehicle_update(
 	vehicle = vehicle_datum_get(vehicle_index);
 	definition = vehicle_specific_definition_get(vehicle->definition_index);
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+    uint64_t profile_begin = halo_profile_now_us(), profile_frame = halo_guest_phases.frame;
+#endif
 	profile_enter(vehicle_update_section);
 
 	if (vehicle->object.parent_object_index!=NONE)
@@ -2695,11 +2692,11 @@ boolean vehicle_update(
 animate:
 	if (definition->unit.object.animation_graph.index!=NONE)
 	{
-		byte animation_update[2];
+		struct unit_animation_update_data data;
 
-		animation_update[0] = 0;
-		animation_update[1] = 0;
-		unit_update_animation(vehicle_index, animation_update);
+		data.state_desired = _unit_state_idle;
+		data.crouching = FALSE;
+		unit_update_animation(vehicle_index, &data);
 	}
 
 	{
@@ -2713,6 +2710,9 @@ animate:
 	}
 
 	profile_exit(vehicle_update_section);
+#if defined(__linux__) || defined(HALO_ANDROID)
+    halo_phase_add(&halo_guest_phases, HALO_PHASE_VEHICLE, profile_begin, halo_profile_now_us(), profile_frame);
+#endif
 
 	return TRUE;
 }

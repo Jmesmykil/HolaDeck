@@ -127,8 +127,10 @@ symbols in this file:
 
 #include "cache/cache_files.h"
 #include "cutscene/cinematics.h"
+#include "devices/device_light_fixtures.h"
 #include "devices/devices.h"
 #include "editor/editor_stubs.h"
+#include "items/garbage.h"
 #include "items/items.h"
 #include "items/projectiles.h"
 #include "items/projectiles_callbacks.h"
@@ -136,7 +138,14 @@ symbols in this file:
 #include "objects.h"
 #include "scenario/scenario.h"
 #include "scenario/scenario_definitions.h"
+#include "sound/sound_scenery.h"
 #include "units/bipeds.h"
+#include "units/units.h"
+#include "units/vehicles.h"
+#ifdef HALO_64BIT
+#include "game/game.h" /* game_time_get */
+#include "game/game_engine.h" /* port: game_engine_vehicle_placement_begin, _allowed */
+#endif
 
 /* ---------- constants */
 
@@ -159,83 +168,24 @@ void object_types_place_objects(
 	void prefix##_dispose_from_old_map( \
 		void)
 
-DECLARE_OBJECT_TYPE_LIFECYCLE(units);
-DECLARE_OBJECT_TYPE_LIFECYCLE(bipeds);
-DECLARE_OBJECT_TYPE_LIFECYCLE(vehicles);
-DECLARE_OBJECT_TYPE_LIFECYCLE(items);
-DECLARE_OBJECT_TYPE_LIFECYCLE(weapons);
 DECLARE_OBJECT_TYPE_LIFECYCLE(scenery);
-DECLARE_OBJECT_TYPE_LIFECYCLE(devices);
 DECLARE_OBJECT_TYPE_LIFECYCLE(machines);
 DECLARE_OBJECT_TYPE_LIFECYCLE(controls);
-DECLARE_OBJECT_TYPE_LIFECYCLE(light_fixtures);
 DECLARE_OBJECT_TYPE_LIFECYCLE(placeholder);
 
 #undef DECLARE_OBJECT_TYPE_LIFECYCLE
 
-void object_export_function_values(
-	long object_index);
-void object_render_debug(
-	long object_index);
-
-boolean unit_new(
-	long object_index);
-void unit_delete(
-	long object_index);
-boolean unit_update(
-	long object_index);
-void unit_export_function_values(
-	long object_index);
-void unit_handle_deleted_object(
-	long object_index,
-	long deleted_object_index);
-void unit_handle_region_destroyed(
-	long object_index,
-	short region_index,
-	unsigned long damage_flags);
-void unit_postprocess_node_matrices(
-	long object_index,
-	struct real_matrix4x3 *node_matrices);
-void unit_render_debug(
-	long object_index);
-
-boolean vehicle_new(
-	long object_index);
 void vehicle_place(
 	long object_index,
 	struct scenario_object_datum *scenario_object);
-void vehicle_delete(
-	long object_index);
-boolean vehicle_update(
-	long object_index);
-void vehicle_export_function_values(
-	long object_index);
-void vehicle_preprocess_node_orientations(
-	long object_index,
-	struct real_orientation *node_orientations);
-void vehicle_reset(
-	long object_index);
-void vehicle_render_debug(
-	long object_index);
 
 void weapon_place(
 	long object_index,
 	struct scenario_object_datum *scenario_object);
-void weapon_delete(
-	long object_index);
-boolean weapon_update(
-	long object_index);
-void weapon_preprocess_node_orientations(
-	long object_index,
-	struct real_orientation *node_orientations);
 
 void equipment_place(
 	long object_index,
 	struct scenario_object_datum *scenario_object);
-boolean garbage_new(
-	long object_index);
-boolean garbage_update(
-	long object_index);
 
 boolean scenery_new(
 	long object_index);
@@ -245,16 +195,6 @@ void scenery_place(
 void scenery_delete(
 	long object_index);
 boolean scenery_update(
-	long object_index);
-
-boolean sound_scenery_new(
-	long object_index);
-void sound_scenery_delete(
-	long object_index);
-
-boolean device_new(
-	long object_index);
-void device_delete(
 	long object_index);
 
 boolean machine_new(
@@ -277,15 +217,9 @@ void control_delete(
 boolean control_update(
 	long object_index);
 
-boolean light_fixture_new(
-	long object_index);
 void light_fixture_place(
 	long object_index,
 	struct scenario_object_datum *scenario_object);
-void light_fixture_delete(
-	long object_index);
-boolean light_fixture_update(
-	long object_index);
 
 boolean placeholder_new(
 	long object_index);
@@ -540,16 +474,17 @@ struct object_type_definition *object_type_definitions[NUMBER_OF_OBJECT_TYPES] =
 	&sound_scenery_data_definition
 };
 
-extern struct object_type_definition *first_object_type_definition;
+struct object_type_definition *first_object_type_definition;
 /* VC7 otherwise emits this tentative definition as a common symbol. */
-#ifndef HALO_ANDROID /* Mach-O section names differ; the default is .bss anyway */
+#if !defined(HALO_ANDROID) && !defined(__APPLE__) /* Mach-O section names differ; the default is .bss anyway */
 #pragma bss_seg(".bss")
 #endif
 static word processed_bsp_flags;
-#ifndef HALO_ANDROID
+#if !defined(HALO_ANDROID) && !defined(__APPLE__)
 #pragma bss_seg()
 #endif
 
+#ifndef HALO_64BIT /* the definitions hold function pointers */
 typedef char verify_object_type_definition_size[
 	sizeof(struct object_type_definition) == 0xA0 ? 1 : -1];
 
@@ -564,6 +499,7 @@ typedef char verify_object_type_definition_part_definitions_offset[
 
 typedef char verify_object_type_definition_next_offset[
 	offsetof(struct object_type_definition, next) == 0x9C ? 1 : -1];
+#endif
 
 /* ---------- public code */
 
@@ -827,21 +763,55 @@ void object_type_delete(
 	return;
 }
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+#include "halo_phase_profile.h"
+extern void platform_log(char const *format, ...);
+static struct halo_phase_timing object_type_timings[NUMBER_OF_OBJECT_TYPES][MAXIMUM_CHILDREN_PER_OBJECT_TYPE_DEFINITION];
+void object_type_profile_report(void)
+{
+    short type, part;
+    for (type=0; type<NUMBER_OF_OBJECT_TYPES; ++type) {
+        struct object_type_definition *definition=object_type_definition_get(type);
+        for (part=0; part<MAXIMUM_CHILDREN_PER_OBJECT_TYPE_DEFINITION && definition->part_definitions[part]; ++part) {
+            struct halo_phase_timing *t=&object_type_timings[type][part];
+            if (t->calls) platform_log("[object_type] tick=%ld sampled=1/16 type=%s part=%s calls=%llu cpu_us=%llu max_us=%llu",
+                game_time_get(), definition->name, definition->part_definitions[part]->name,
+                (unsigned long long)t->calls, (unsigned long long)t->total_us, (unsigned long long)t->max_us);
+        }
+    }
+    memset(object_type_timings,0,sizeof(object_type_timings));
+}
+#endif
+
 boolean object_type_update(
 	long object_index)
 {
 	short i;
 	boolean result;
-	struct object_type_definition *definition = object_type_definition_get(object_get(object_index)->object.type);
-	result = FALSE;
+	short object_type = object_get(object_index)->object.type;
+    struct object_type_definition *definition = object_type_definition_get(object_type);
+#if defined(__linux__) || defined(HALO_ANDROID)
+    boolean sampled = (object_index & 15) == (game_time_get() & 15);
+#endif
+    result = FALSE;
 
 	for (i = 0; definition->part_definitions[i]; i++)
 	{
 		struct object_type_definition *current_definition = definition->part_definitions[i];
-		if (current_definition->datum_update && current_definition->datum_update(object_index))
-		{
-			result = TRUE;
-		}
+		if (current_definition->datum_update) {
+#if defined(__linux__) || defined(HALO_ANDROID)
+            uint64_t begin = sampled ? halo_profile_now_us() : 0;
+#endif
+            if (current_definition->datum_update(object_index)) result = TRUE;
+#if defined(__linux__) || defined(HALO_ANDROID)
+            if (sampled) {
+                uint64_t elapsed=halo_profile_now_us()-begin;
+                struct halo_phase_timing *t=&object_type_timings[object_type][i];
+                t->calls++; t->total_us+=elapsed;
+                if(elapsed>t->max_us) t->max_us=elapsed;
+            }
+#endif
+        }
 	}
 
 	return result;
@@ -1228,6 +1198,9 @@ void object_types_place_all(
 	{
 		short object_type;
 
+		/* port: the gametype's vehicles counted afresh */
+		game_engine_vehicle_placement_begin();
+
 		for (object_type = 0; object_type < NUMBER_OF_OBJECT_TYPES; object_type++)
 		{
 			struct object_type_definition *definition;
@@ -1261,6 +1234,13 @@ void object_types_place_all(
 							scenario_datum_index,
 							element_size);
 
+					/* port: the gametype's vehicles of each team (game_variant_options:
+					every machine places the same) */
+					if (object_type == _object_type_vehicle &&
+						!game_engine_vehicle_placement_allowed(scenario_object, scenario_palette))
+					{
+						continue;
+					}
 					object_new_from_scenario(scenario_object, scenario_palette);
 					objects_garbage_collection();
 				}

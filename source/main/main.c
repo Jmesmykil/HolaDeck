@@ -331,6 +331,9 @@ symbols in this file:
 
 /* ---------- headers */
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+#include "halo_phase_profile.h"
+#endif
 #include "cseries.h"
 #include "errors.h"
 #include "cseries/profile.h"
@@ -339,15 +342,15 @@ symbols in this file:
 #include "real_math.h"
 #include "game.h"
 #include "game_engine.h"
+#include "camera/camera_scripting.h"
 #include "game/cheats.h"
-#include "game/player_control.h"
 #include "game/player_control_runtime.h"
 #include "game/players.h"
 #include "game/local_players.h"
 #include "game/player_queues_new.h"
 #include "integer_math.h"
-#include "main/main_runtime.h"
 #include "input.h"
+#include "input/input_abstraction.h"
 #include "shell.h"
 #include "event_manager.h"
 #include "telnet_console.h"
@@ -360,18 +363,20 @@ symbols in this file:
 #include "cache/cache_files.h"
 #include "cache/predicted_resources.h"
 #include "bitmaps/bitmap_group.h"
-#include "bitmaps/bitmaps_internal.h"
+#include "bitmaps/bitmaps.h"
 #include "bitmaps/tiff_file.h"
 #include "interface/hud.h"
+#include "interface/hud_definitions.h"
 #include "interface/attract_mode.h"
 #include "interface/interface.h"
+#include "interface/marketing_and_strategic_business_development.h"
+#include "interface/player_ui.h"
 #include "interface/terminal.h"
 #include "saved games/player_profile.h"
 #include "saved games/game_state.h"
 #include "sound/sound_manager.h"
 #include "rasterizer/rasterizer.h"
-#include "rasterizer/rasterizer_debug.h"
-#include "rasterizer/rasterizer_debug_options.h"
+#include "rasterizer/rasterizer_console_vars.h"
 #include "bink/bink_playback.h"
 #include "main/d3d_intimacy.h"
 #include "networking/network_game_globals.h"
@@ -386,6 +391,11 @@ symbols in this file:
 #include "text/draw_string.h"
 #include "text/font_group.h"
 #include "tag_files/files.h"
+#ifdef HALO_64BIT
+#include "input/input_abstraction.h"
+#include "interface/player_ui.h"
+#include "interface/marketing_and_strategic_business_development.h"
+#endif
 
 /* ---------- constants */
 
@@ -554,17 +564,13 @@ struct _main_globals
 	byte reserved61C[4];
 };
 
-struct main_hud_globals_definition
-{
-	byte reserved00[0x54];
-	long font_tag_index;
-};
-
 typedef char main_hud_globals_font_tag_index_offset_assert[
-	offsetof(struct main_hud_globals_definition, font_tag_index) == 0x54 ? 1 : -1];
+	offsetof(struct hud_globals_definition, messaging.single_player_font.index) == 0x54 ? 1 : -1];
 
+#ifndef HALO_64BIT
 typedef char main_globals_size_assert[
 	sizeof(struct _main_globals) == 0x620 ? 1 : -1];
+#endif
 typedef char main_globals_frame_start_milliseconds_offset_assert[
 	offsetof(struct _main_globals, frame_start_milliseconds) == 0x00 ? 1 : -1];
 typedef char main_globals_rasterizer_target_index_offset_assert[
@@ -581,6 +587,7 @@ typedef char main_globals_connection_offset_assert[
 	offsetof(struct _main_globals, connection) == 0x2C ? 1 : -1];
 typedef char main_globals_movie_offset_assert[
 	offsetof(struct _main_globals, movie) == 0x30 ? 1 : -1];
+#ifndef HALO_64BIT
 typedef char main_globals_defer_map_change_offset_assert[
 	offsetof(struct _main_globals, defer_map_change) == 0x45 ? 1 : -1];
 typedef char main_globals_reset_map_offset_assert[
@@ -628,6 +635,7 @@ typedef char main_globals_vblank_flip_deltas_offset_assert[
 typedef char main_globals_vblank_debug_string_offset_assert[
 	offsetof(struct _main_globals, vblank_debug_string) == 0x41C ? 1 : -1];
 
+#endif
 struct game_options
 {
 	unsigned long flags;
@@ -639,12 +647,6 @@ struct game_options
 
 typedef char game_options_size_assert[
 	sizeof(struct game_options) == 0x10C ? 1 : -1];
-
-struct _main_window_storage
-{
-	struct render_window window;
-	byte reservedAC[4];
-};
 
 #pragma pack(push, 1)
 struct _screenshot_and_framerate_globals
@@ -665,6 +667,8 @@ struct _screenshot_and_framerate_globals
 typedef char screenshot_and_framerate_globals_size_assert[
 	sizeof(struct _screenshot_and_framerate_globals) == 0x38B ? 1 : -1];
 
+void network_test_update(boolean main_menu_loaded, real seconds);
+
 /* ---------- prototypes */
 
 static long sort_desired_local_player_controllers(
@@ -683,11 +687,8 @@ static void main_frame_rate_debug(
 
 static void main_new_map(
 	struct game_options *options);
-extern void scripted_camera_set(
-	word camera_point_index0,
-	word camera_point_index1,
-	long transition_time);
-extern struct main_hud_globals_definition *hud_globals;
+static void main_game_render(
+	double time_delta_since_tick_sec);
 
 /* ---------- globals */
 
@@ -710,7 +711,6 @@ static char const *scenario_paths[10] =
 	"levels\\d40\\d40"
 };
 
-static struct _main_window_storage window_storage = { 0 };
 static struct _main_globals main_globals = { 0 };
 boolean debug_force_frame_rate_update = FALSE;
 boolean debug_no_drawing = FALSE;
@@ -720,6 +720,7 @@ boolean display_framerate = FALSE;
 boolean display_vblank_deltas = FALSE;
 boolean display_precache_progress = FALSE;
 struct _screenshot_and_framerate_globals global_screenshot_count = { 0 };
+boolean debug_render_freeze;
 
 /* ---------- public code */
 
@@ -1662,6 +1663,16 @@ void main_movie_stop(
 	return;
 }
 
+void main_crash(
+	char const *str)
+{
+	/* BUG (original, deliberate): the "crash" script command ("crashes (for debugging).")
+	 * faults on purpose by storing this literal through the null pointer; the August and
+	 * September 2001 builds (debug and retail) and January all emit this one store. */
+	*(char **)NULL = "chucky was here!  NULL belongs to me!!!!!";
+	return;
+}
+
 void main_print_version(
 	void)
 {
@@ -1789,20 +1800,32 @@ void main_roll_credits(
 void main_pregame_render(
 	void)
 {
+	/* Name, type and function scope from the 2003 PC demo PDB and the HCEX PDB (static local
+	   struct render_window window of main_pregame_render). Neither PDB records the block: placing it
+	   at the top of the function is unattested. January corroborates: .bss +0, the 0xAC-byte window
+	   padded to 0xB0 before main_globals, referenced only by this function. */
+	static struct render_window window;
+
 	collision_log_continue_period(TRUE);
+#if defined(__linux__) || defined(HALO_ANDROID)
+    { uint64_t frame = halo_guest_phases.frame, begin = halo_profile_now_us();
+      sound_render();
+      halo_frame_phase_add(&halo_guest_frame_phases, HALO_FRAME_SOUND, begin, halo_profile_now_us(), frame); }
+#else
 	sound_render();
+#endif
 	{
 		real_point3d position = { 0.0f, 0.0f, 0.0f };
 		real_vector3d forward = { 0.0f, 0.0f, 1.0f };
 		real_vector3d up = { 0.0f, 1.0f, 0.0f };
 
-		window_storage.window.local_player_index = NONE;
-		window_storage.window.console_window = TRUE;
-		window_storage.window.rasterizer_camera.position = position;
-		window_storage.window.rasterizer_camera.forward = forward;
-		window_storage.window.rasterizer_camera.up = up;
-		window_storage.window.rasterizer_camera.mirrored = FALSE;
-		window_storage.window.rasterizer_camera.vertical_field_of_view =
+		window.local_player_index = NONE;
+		window.console_window = TRUE;
+		window.rasterizer_camera.position = position;
+		window.rasterizer_camera.forward = forward;
+		window.rasterizer_camera.up = up;
+		window.rasterizer_camera.mirrored = FALSE;
+		window.rasterizer_camera.vertical_field_of_view =
 			2.0f * arctangent(
 				0.75f * render_camera_get_adjusted_field_of_view_tangent(
 					DEGREES_TO_RADIANS(80.0f)),
@@ -1810,13 +1833,13 @@ void main_pregame_render(
 		compute_window_bounds(
 			0,
 			1,
-			&window_storage.window.rasterizer_camera.viewport_bounds,
-			&window_storage.window.rasterizer_camera.window_bounds);
-		window_storage.window.rasterizer_camera.z_near = 0.01f;
-		window_storage.window.rasterizer_camera.z_far = 1.0f;
-		window_storage.window.render_camera = window_storage.window.rasterizer_camera;
+			&window.rasterizer_camera.viewport_bounds,
+			&window.rasterizer_camera.window_bounds);
+		window.rasterizer_camera.z_near = 0.01f;
+		window.rasterizer_camera.z_far = 1.0f;
+		window.render_camera = window.rasterizer_camera;
 		render_frame_pregame(
-			&window_storage.window,
+			&window,
 			main_globals.movie);
 	}
 	collision_log_end_period();
@@ -2166,7 +2189,6 @@ static boolean main_framerate_throttle_enabled(
 	return rasterizer_globals.framerate_throttle;
 }
 
-#ifdef HALO_LINUX
 /* The native ports draw a frame whenever the display can show one, paced
 by vsync, and frames fall between the 30 Hz ticks
 (port/linux/game/render_interpolation.c): no vertical blank throttle, and
@@ -2211,7 +2233,6 @@ static void main_update_time_unthrottled(
 		rasterizer_globals.frame_and_vertical_blank_index;
 }
 
-#endif
 static void main_update_time(
 	void)
 {
@@ -2227,13 +2248,11 @@ static void main_update_time(
 	short short_target_index;
 	real seconds_elapsed;
 
-#ifdef HALO_LINUX
 	if (halo_interpolation_enabled())
 	{
 		main_update_time_unthrottled();
 		return;
 	}
-#endif
 	end_milliseconds = system_milliseconds();
 	minimum_target_index = MAX(
 		main_globals.rasterizer_target_index,
@@ -2478,11 +2497,7 @@ void main_rasterizer_throttle(
 	did_throttle = FALSE;
 	main_globals.rasterizer_throttle_start_index =
 		rasterizer_globals.frame_and_vertical_blank_index + 1;
-#ifdef HALO_LINUX
 	if (rasterizer_globals.framerate_throttle && !halo_interpolation_enabled())
-#else
-	if (rasterizer_globals.framerate_throttle)
-#endif
 	{
 		target_index = main_globals.rasterizer_target_index;
 		target_index--;
@@ -2708,23 +2723,18 @@ void main_framerate_render(
 	{
 		long font_tag_index;
 
-		font_tag_index = hud_globals->font_tag_index;
+		font_tag_index = hud_globals->messaging.single_player_font.index;
 		if (font_tag_index != NONE)
 		{
 			real frame_seconds;
 			real frame_rate_real;
 			long frame_rate;
 			rectangle2d bounds;
-#ifdef HALO_LINUX
 			/* room for three digits under C99 snprintf, which (unlike MSVC's
 			_snprintf) keeps a byte of the count for the terminator */
 			char frame_rate_string[8];
-#else
-			char frame_rate_string[4];
-#endif
 
 			bounds = render.camera.window_bounds;
-#ifdef HALO_LINUX
 			/* The native ports draw at the display's refresh rate, up to
 			hundreds of frames a second: show frames per second averaged over
 			half a second, counting each frame once (split screen draws this
@@ -2751,13 +2761,6 @@ void main_framerate_render(
 				(void)frame_seconds;
 				(void)frame_rate_real;
 			}
-#else
-			frame_seconds = MAX(main_globals.seconds_elapsed, 0.01f);
-			frame_rate_real = 1.0f / frame_seconds;
-			frame_rate = fast_ftol(frame_rate_real);
-			if (main_globals.vblank_interval_held)
-				frame_rate = 60 / main_globals.vblank_interval_current;
-#endif
 
 			_snprintf(
 				frame_rate_string,
@@ -2779,7 +2782,7 @@ void main_framerate_render(
 	{
 		long font_tag_index;
 
-		font_tag_index = hud_globals->font_tag_index;
+		font_tag_index = hud_globals->messaging.single_player_font.index;
 		if (font_tag_index != NONE)
 		{
 			short index;
@@ -2816,7 +2819,7 @@ void main_framerate_render(
 	{
 		long font_tag_index;
 
-		font_tag_index = hud_globals->font_tag_index;
+		font_tag_index = hud_globals->messaging.single_player_font.index;
 		if (font_tag_index != NONE)
 		{
 			real progress;
@@ -2904,11 +2907,7 @@ void halt_and_catch_fire(
 					1.0f);
 			window_parameters.camera.z_near = rasterizer_globals.near_clip_distance;
 			window_parameters.camera.viewport_bounds.x0 = 0;
-#ifdef HALO_LINUX
 			window_parameters.camera.viewport_bounds.x1 = (short)halo_screen_width();
-#else
-			window_parameters.camera.viewport_bounds.x1 = 640;
-#endif
 			window_parameters.camera.viewport_bounds.y0 = 0;
 			window_parameters.camera.viewport_bounds.y1 = 480;
 			window_parameters.camera.z_far = rasterizer_globals.far_clip_distance;
@@ -2988,7 +2987,7 @@ void main_loop_of_death(
 	return;
 }
 
-void main_game_render(
+static void main_game_render(
 	double time_delta_since_tick_sec)
 {
 	boolean force_single_screen;
@@ -3001,7 +3000,13 @@ void main_game_render(
 
 	lock_global_random_seed();
 	collision_log_continue_period(TRUE);
+#if defined(__linux__) || defined(HALO_ANDROID)
+    { uint64_t frame = halo_guest_phases.frame, begin = halo_profile_now_us();
+      sound_render();
+      halo_frame_phase_add(&halo_guest_frame_phases, HALO_FRAME_SOUND, begin, halo_profile_now_us(), frame); }
+#else
 	sound_render();
+#endif
 	force_single_screen = game_engine_force_single_screen();
 	last_local_player_index = NONE;
 
@@ -3044,9 +3049,7 @@ void main_game_render(
 
 			window->local_player_index = last_local_player_index;
 			observer = observer_get_camera(window->local_player_index);
-#ifdef HALO_LINUX
 			observer = render_interpolation_camera(window->local_player_index, observer);
-#endif
 		}
 		else
 		{
@@ -3199,6 +3202,9 @@ void main_loop(
 			main_reset_map_private();
 		}
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+        { uint64_t frame_begin = halo_profile_now_us(), frame_entry = halo_guest_phases.frame;
+#endif
 		profile_frame_start();
 		input_frame_begin();
 		input_update();
@@ -3211,6 +3217,8 @@ void main_loop(
 		{
 			render_frame = TRUE;
 
+			/* automated system link tests (port/linux/game/network_test.c) */
+			network_test_update(main_globals.main_menu_scenario_loaded, main_globals.seconds_elapsed);
 			connection = main_globals.connection;
 			if (connection==_game_connection_network_client)
 			{
@@ -3243,6 +3251,23 @@ void main_loop(
 
 			main_update_time();
 			process_ui_widgets();
+#ifdef HALO_GAME_BROWSER
+			{
+				/* the dedicated server's director (server/src/dedicated.c); the
+				game list's probe (server/src/probe.c); the game list's confirmed
+				players (port/linux/game/game_list_claims.c) and statistics
+				recorder (port/linux/game/game_stats.c) */
+				void dedicated_server_update(void);
+				void probe_update(void);
+				void game_list_claims_update(void);
+				void game_stats_update(void);
+
+				dedicated_server_update();
+				probe_update();
+				game_list_claims_update();
+				game_stats_update();
+			}
+#endif
 			bink_playback_update();
 
 			if ((!game_in_editor() && (input_key_is_down(_key_end) || input_key_is_down(_key_escape))) || editor_should_exit())
@@ -3277,11 +3302,9 @@ void main_loop(
 					render_frame = main_globals.main_menu_scenario_loaded ||
 						(main_globals.halt_time_scale &&
 							(game_time_get_paused() || game_time_get_elapsed()>0 || game_time_get_speed()<1.0f));
-#ifdef HALO_LINUX
 					/* frames between ticks too (render_interpolation.c) */
 					if (halo_interpolation_enabled())
 						render_frame = main_globals.main_menu_scenario_loaded || main_globals.halt_time_scale;
-#endif
 					render_frame &= !game_engine_running() || game_time_get()>=3;
 
 					collision_log_continue_period(1);
@@ -3299,13 +3322,15 @@ void main_loop(
 				if (render_frame && !debug_no_drawing)
 				{
 					profile_render_start();
-#ifdef HALO_LINUX
 					render_interpolation_frame_begin();
-					main_game_render((double)main_globals.seconds_elapsed);
-					render_interpolation_frame_end();
+#if defined(__linux__) || defined(HALO_ANDROID)
+                    { uint64_t frame = halo_guest_phases.frame, begin = halo_profile_now_us();
+                      main_game_render((double)main_globals.seconds_elapsed);
+                      halo_phase_add(&halo_guest_phases, HALO_PHASE_RENDER, begin, halo_profile_now_us(), frame); }
 #else
 					main_game_render((double)main_globals.seconds_elapsed);
 #endif
+					render_interpolation_frame_end();
 					profile_render_end();
 				}
 			}
@@ -3327,6 +3352,9 @@ void main_loop(
 		input_frame_end();
 		profile_frame_end();
 		main_frame_rate_debug();
+#if defined(__linux__) || defined(HALO_ANDROID)
+          halo_frame_phase_add(&halo_guest_frame_phases, HALO_FRAME_TOTAL, frame_begin, halo_profile_now_us(), frame_entry); }
+#endif
 
 		if (main_globals.restart_time)
 		{

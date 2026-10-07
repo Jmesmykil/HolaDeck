@@ -122,7 +122,6 @@ symbols in this file:
 
 /* ---------- headers */
 
-#include "rasterizer/rasterizer_frame_statistics.h"
 #include "cseries/cseries.h"
 #include "cseries/errors.h"
 #include "effects/decal_definitions.h"
@@ -131,12 +130,14 @@ symbols in this file:
 #include "memory/data.h"
 #include "memory/lruv_cache.h"
 #include "rasterizer/rasterizer.h"
+#include "rasterizer/rasterizer_console_vars.h"
 /* The XDK's stock D3DINLINE (static __forceinline) definitions supply both the
  * inline expansions used below and the out-of-line wrapper bodies January
  * retains in this object. Do not redefine D3DINLINE, take a wrapper's address
  * or hand-write a wrapper body: any of those changes the emitted ABI. */
 #include <xtl.h>
 #include "rasterizer/xbox/rasterizer_xbox.h"
+#include "rasterizer/xbox/rasterizer_xbox_pixel_shader.h"
 #include "saved games/game_state.h"
 
 /* ---------- constants */
@@ -208,41 +209,6 @@ enum
 #define DECAL_GET(index) ((struct decal_datum *)datum_get(global_decal_data, (index)))
 
 /* ---------- structures */
-
-struct rasterizer_decals_debug_options
-{
-	byte reserved0000[2];
-	short statistics_mode;
-	short drawing_mode;
-	byte reserved0006[0xf];
-	boolean draw_environment_decals;
-	byte reserved0016[0x3e];
-	long decal_zbias;
-	byte reserved0058[9];
-	boolean filthy_decal_fog_hack_enabled;
-};
-
-struct pixel_shader_definition
-{
-	unsigned long alpha_inputs[8];
-	unsigned long final_combiner_inputs_abcd;
-	unsigned long final_combiner_inputs_efg;
-	unsigned long constant_0[8];
-	unsigned long constant_1[8];
-	unsigned long alpha_outputs[8];
-	unsigned long rgb_inputs[8];
-	unsigned long compare_mode;
-	unsigned long final_combiner_constant_0;
-	unsigned long final_combiner_constant_1;
-	unsigned long rgb_outputs[8];
-	unsigned long combiner_count;
-	unsigned long texture_modes;
-	unsigned long dot_mapping;
-	unsigned long input_texture;
-	unsigned long c0_mapping;
-	unsigned long c1_mapping;
-	unsigned long final_combiner_constants;
-};
 
 struct decal_vertex
 {
@@ -321,11 +287,9 @@ static struct lruv_cache *local_vertex_cache = NULL;
 static boolean locked_decal_reported = FALSE;
 static boolean permanent_decal_reported = FALSE;
 static boolean local_filthy_decal_fog_hack_enabled = FALSE;
-extern struct rasterizer_decals_debug_options rasterizer_debug_options;
-extern struct rasterizer_window_begin_parameters global_window_parameters;
 extern struct pixel_shader_definition pixel_shader;
 
-long last_decal_index_queried_by_lruv_cache = NONE;
+static long last_decal_index_queried_by_lruv_cache = NONE;
 
 /* ---------- public code */
 
@@ -354,7 +318,11 @@ void *_rasterizer_decal_vertices_lock(
 		"c:\\halo\\SOURCE\\rasterizer\\xbox\\rasterizer_xbox_decals.c",
 		219,
 		global_d3d_device);
+#ifdef HALO_64BIT
+	vertex_data_offset = lruv_block_get_address(
+#else
 	vertex_data_offset = (unsigned long)lruv_block_get_address(
+#endif
 		local_vertex_cache,
 		cache_index);
 	rasterizer_globals.current_lock_operation = _rasterizer_lock_decal_vertices;
@@ -435,10 +403,18 @@ void _rasterizer_decals_initialize(
 		92,
 		local_d3d_vertex_buffer);
 	local_d3d_vertex_buffer->Common = 1;
+#ifdef HALO_64BIT
+	local_d3d_vertex_buffer->Data = xbox_address(game_state_gpu_malloc(
+#else
 	local_d3d_vertex_buffer->Data = (unsigned long)game_state_gpu_malloc(
+#endif
 		"decal vertices",
 		NULL,
+#ifdef HALO_64BIT
+		DECAL_VERTEX_CACHE_SIZE));
+#else
 		DECAL_VERTEX_CACHE_SIZE);
+#endif
 	local_d3d_vertex_buffer->Lock = 0;
 	match_assert(
 		"c:\\halo\\SOURCE\\rasterizer\\xbox\\rasterizer_xbox_decals.c",
@@ -603,7 +579,7 @@ void _rasterizer_decals_begin(
 	IDirect3DDevice8_SetRenderState(
 		global_d3d_device,
 		D3DRS_ZBIAS,
-		rasterizer_debug_options.decal_zbias);
+		rasterizer_debug_options.zbias);
 	if (layer == _decal_layer_alpha_tested)
 	{
 		IDirect3DDevice8_SetRenderState(
@@ -774,7 +750,11 @@ void _rasterizer_decals_draw(
 				rasterizer_frame_statistics.decal_texture_change_count++;
 		}
 
+#ifdef HALO_64BIT
+		vertex_data_offset = lruv_block_get_address(local_vertex_cache, decal_index);
+#else
 		vertex_data_offset = (unsigned long)lruv_block_get_address(local_vertex_cache, decal_index);
+#endif
 		color = decal->color;
 		intensity = (decal->intensity * (color >> 24) + 127) >> 8;
 		match_assert(

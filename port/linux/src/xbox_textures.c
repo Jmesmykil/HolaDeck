@@ -15,6 +15,9 @@ memory_watch.c detects that by write-protecting the pages.
 */
 
 #include "xgpu.h"
+#include "hud_hires.h"
+#include "menu_files.h"
+#include "text_hires.h"
 #include "port_config.h"
 
 #include <stdio.h>
@@ -358,14 +361,20 @@ static void decode_level(const struct xgpu_texture_description *description, uns
 	unsigned long depth = level_dimension(description->depth, level);
 	unsigned long x, y, z;
 
-	if (description->linear)
+	if (description->linear || description->pc_layout)
 	{
+		/* (a linear texture's rows are its pitch apart; Halo PC's, a level's
+		width) */
+		unsigned long pitch = description->linear ? description->pitch : width * information.bytes;
+
+		for (z = 0; z < depth; z++)
 		for (y = 0; y < height; y++)
 		{
-			const unsigned char *row = source + y * description->pitch;
+			const unsigned char *row = source + (z * height + y) * pitch;
 
 			for (x = 0; x < width; x++)
-				destination[y * width + x] = convert_texel(information.kind, row + x * information.bytes, palette, x, row);
+				destination[(z * height + y) * width + x] = convert_texel(information.kind, row + x * information.bytes,
+					palette, x, row);
 		}
 		return;
 	}
@@ -589,12 +598,47 @@ static void upload(GLuint texture, GLenum target, const struct xgpu_texture_desc
 	converted = description->compressed && !decode_compressed ? NULL : malloc(largest * sizeof(unsigned long));
 	glBindTexture(target, texture);
 	xgpu_gl_state_invalidate();
+	/* the channel each channel is sampled from, set on every upload: a
+	texture object is reused for whatever pixels arrive at its address */
+	{
+		GLint channels[4] = { GL_RED, GL_GREEN, GL_BLUE, GL_ALPHA };
+
 #ifdef HALO_ANDROID
-	/* converted texels are BGRA in memory (32-bit ARGB words); ES takes
-	RGBA */
-	glTexParameteri(target, GL_TEXTURE_SWIZZLE_R, converted ? GL_BLUE : GL_RED);
-	glTexParameteri(target, GL_TEXTURE_SWIZZLE_B, converted ? GL_RED : GL_BLUE);
+		/* converted texels are BGRA in memory (32-bit ARGB words); ES takes
+		RGBA */
+		if (converted)
+		{
+			channels[0] = GL_BLUE;
+			channels[2] = GL_RED;
+		}
 #endif
+		/* a Halo PC HUD meter: its fill order (alpha) sampled as the color,
+		its shape (the color) as alpha, as the Xbox's meter shader reads
+		them (D3DCOMMON_PORT_PC_METER) */
+		if (description->pc_meter)
+		{
+			GLint red = channels[0];
+
+			channels[0] = channels[1] = channels[2] = channels[3];
+			channels[3] = red;
+		}
+		/* a Halo PC multipurpose map: specular (blue), self-illumination
+		(green), color change (alpha) and the auxiliary mask (red) sampled
+		where the Xbox's model shaders read them, red, green, blue and alpha
+		(D3DCOMMON_PORT_PC_MULTIPURPOSE) */
+		else if (description->pc_multipurpose)
+		{
+			GLint red = channels[0];
+
+			channels[0] = channels[2];
+			channels[2] = channels[3];
+			channels[3] = red;
+		}
+		glTexParameteri(target, GL_TEXTURE_SWIZZLE_R, channels[0]);
+		glTexParameteri(target, GL_TEXTURE_SWIZZLE_G, channels[1]);
+		glTexParameteri(target, GL_TEXTURE_SWIZZLE_B, channels[2]);
+		glTexParameteri(target, GL_TEXTURE_SWIZZLE_A, channels[3]);
+	}
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glTexParameteri(target, GL_TEXTURE_BASE_LEVEL, 0);
 	glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, (GLint)description->levels - 1);
@@ -608,6 +652,12 @@ static void upload(GLuint texture, GLenum target, const struct xgpu_texture_desc
 			GLsizei width = (GLsizei)level_dimension(description->width, level);
 			GLsizei height = (GLsizei)level_dimension(description->height, level);
 			GLsizei depth = (GLsizei)level_dimension(description->depth, level);
+
+			/* (Halo PC's cube map: its levels one after another, each the six
+			faces', the second and third swapped) */
+			if (description->pc_layout && description->cube_map)
+				source = base + xgpu_texture_level_offset(description, level) * 6 +
+					(face == 1 ? 2 : face == 2 ? 1 : face) * level_bytes(description, level);
 
 			if (description->compressed && !decode_compressed)
 			{
@@ -651,6 +701,8 @@ struct texture_entry
 	unsigned long address, size;
 	unsigned long generation;
 	unsigned long last_used_frame;
+	/* the high-res HUD texture drawn in its place (hud_hires.h), or -1 */
+	long override;
 };
 
 #define TEXTURE_BUCKET_COUNT 4096
@@ -693,6 +745,49 @@ static unsigned long palette_hash(const D3DCOLOR *palette)
 	return hash ? hash : 1;
 }
 
+/* an entry's GL texture and description: its high-res HUD texture's, if it has
+one, with the bitmap's own size (which its coordinates are in) */
+static GLuint texture_entry_result(struct texture_entry *entry, GLenum *target,
+	struct xgpu_texture_description *description)
+{
+	*target = entry->target;
+	*description = entry->description;
+	/* (the high-res text's atlas, for its placeholder bitmap: text_hires.h) */
+	{
+		GLuint atlas = text_hires_atlas_texture(entry->data);
+
+		if (atlas)
+		{
+			description->levels = 1;
+			return atlas;
+		}
+	}
+	/* (a menu's bitmap: menu_files.h) */
+	{
+		unsigned long levels;
+		GLuint art = menu_art_texture(entry->data, &levels);
+
+		if (art)
+		{
+			description->levels = levels;
+			description->hires = TRUE;
+			return art;
+		}
+	}
+	if (entry->override >= 0)
+	{
+		GLuint texture = hud_hires_override_texture(entry->override, &description->levels);
+
+		if (texture)
+		{
+			description->hires = TRUE;
+			description->hires_coverage = hud_hires_override_coverage(entry->override);
+			return texture;
+		}
+	}
+	return entry->texture;
+}
+
 GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *target,
 	struct xgpu_texture_description *description)
 {
@@ -716,9 +811,7 @@ GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *
 	{
 		entry = recent_textures[recent].entry;
 		entry->last_used_frame = texture_frame;
-		*target = entry->target;
-		*description = entry->description;
-		return entry->texture;
+		return texture_entry_result(entry, target, description);
 	}
 
 	for (entry = *bucket; entry; entry = entry->next)
@@ -749,9 +842,14 @@ GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *
 		xgpu_texture_describe(format_word, size_word, &entry->description);
 		entry->target = entry->description.cube_map ? GL_TEXTURE_CUBE_MAP :
 			entry->description.depth > 1 ? GL_TEXTURE_3D : GL_TEXTURE_2D;
+#ifdef HALO_64BIT
+		entry->address = (unsigned int)data | PLATFORM_CONTIGUOUS_BASE; /* an Xbox address */
+#else
 		entry->address = (unsigned long)PLATFORM_PHYSICAL_TO_VIRTUAL(data);
+#endif
 		entry->size = xgpu_texture_face_size(&entry->description) * (entry->description.cube_map ? 6 : 1);
 		entry->generation = 0;
+		entry->override = -1;
 		glGenTextures(1, &entry->texture);
 		entry->next = *bucket;
 		*bucket = entry;
@@ -762,18 +860,44 @@ GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *
 	generation = memory_watch_generation(entry->address, entry->size);
 	if (!entry->generation || generation > entry->generation || no_cache)
 	{
+		/* (whose layout, as the bitmap now here is laid out) */
+		entry->description.pc_layout = (resource[0] & D3DCOMMON_PORT_PC_LAYOUT) != 0;
+		entry->description.pc_meter = (resource[0] & D3DCOMMON_PORT_PC_METER) != 0;
+		entry->description.pc_multipurpose = (resource[0] & D3DCOMMON_PORT_PC_MULTIPURPOSE) != 0;
 		/* protect first, so a write racing with the upload is noticed */
 		memory_watch_protect(entry->address, entry->size);
 		entry->generation = memory_watch_generation(entry->address, entry->size);
 		if (!entry->generation)
 			entry->generation = 1;
-		if (platform_is_contiguous((void *)entry->address) &&
+		/* (which bitmap is here may have changed with the pixels) */
+		entry->override = -1;
+		if (!palettized && !entry->description.cube_map && entry->description.depth == 1)
+		{
+			unsigned long levels;
+
+			entry->override = hud_hires_override_find(entry->address, entry->description.width,
+				entry->description.height, entry->description.levels > 1 ?
+				xgpu_texture_level_offset(&entry->description, 1) : xgpu_texture_face_size(&entry->description));
+			if (entry->override >= 0 && !hud_hires_override_texture(entry->override, &levels))
+				entry->override = -1;
+		}
+#ifdef HALO_64BIT
+		if (entry->override < 0 && platform_is_contiguous(xbox_pointer(entry->address)) &&
+			platform_is_contiguous(xbox_pointer(entry->address + entry->size - 1)))
+#else
+		if (entry->override < 0 && platform_is_contiguous((void *)entry->address) &&
 			platform_is_contiguous((void *)(entry->address + entry->size - 1)))
+#endif
 		{
 			if (config_boolean("debug.texture_log"))
 			{
+#ifdef HALO_64BIT
+				const unsigned char *bytes = xbox_pointer(entry->address);
+				unsigned int index, ones = 0, zeros = 0;
+#else
 				const unsigned char *bytes = (const unsigned char *)entry->address;
 				unsigned long index, ones = 0, zeros = 0;
+#endif
 
 				for (index = 0; index < entry->size; index++)
 				{
@@ -785,7 +909,7 @@ GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *
 					entry->description.height, entry->size, entry->generation,
 					ones * 100 / entry->size, zeros * 100 / entry->size);
 			}
-			upload(entry->texture, entry->target, &entry->description, (const unsigned char *)entry->address, palette);
+			upload(entry->texture, entry->target, &entry->description, (const unsigned char *)xbox_pointer(entry->address), palette);
 		}
 	}
 	entry->last_used_frame = texture_frame;
@@ -798,9 +922,7 @@ GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *
 		recent_textures[recent].watch_serial = watch_serial;
 		recent_textures[recent].drop_serial = texture_drop_serial;
 	}
-	*target = entry->target;
-	*description = entry->description;
-	return entry->texture;
+	return texture_entry_result(entry, target, description);
 }
 
 void xgpu_texture_cache_begin_frame(void)

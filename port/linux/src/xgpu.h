@@ -69,6 +69,12 @@ void xgpu_text_append(struct xgpu_text *text, const char *format, ...) __attribu
 header). Attributes whose bit is set in packed_attribute_mask are fed as
 NORMPACKED3 32-bit integers and unpacked in the shader. Returns a malloc'd
 string. */
+/* OpenGL ES and macOS's OpenGL 4.1 have no glClipControl: vertex shaders
+convert D3D's clip space themselves (nv2a_vsh.c) */
+#if defined(HALO_ANDROID) || defined(__APPLE__)
+#define HALO_GL_NO_CLIP_CONTROL 1
+#endif
+
 char *nv2a_vertex_shader_to_glsl(const DWORD *instructions, unsigned long instruction_count,
 	unsigned long packed_attribute_mask);
 
@@ -100,7 +106,12 @@ struct nv2a_pixel_shader_key
 	unsigned char fog_table_mode;
 	/* inside a visibility test: count the samples that pass (Android) */
 	unsigned char count_samples;
-	unsigned char pad;
+	/* a high-res HUD meter (hud_hires.h) drawn with the meter's blend (the
+	destination kept by the source's alpha): that alpha is eased to 1 by the
+	coverage texture 0's green holds, so that the meter darkens what is
+	behind it only where it covers it (the Xbox's point-sampled meters stop
+	at their texels' edges; filtered ones have a fringe of faint texels) */
+	unsigned char coverage_alpha;
 };
 
 char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key);
@@ -135,8 +146,13 @@ struct xgpu_texture_description
 	unsigned long width, height, depth, levels;
 	BOOL cube_map;
 	BOOL linear;        /* not swizzled; addressed with texel coordinates */
+	BOOL pc_layout;     /* laid out as Halo PC's bitmaps (D3DCOMMON_PORT_PC_LAYOUT) */
+	BOOL pc_meter;      /* a Halo PC HUD meter's channels (D3DCOMMON_PORT_PC_METER) */
+	BOOL pc_multipurpose; /* a Halo PC multipurpose map's channels (D3DCOMMON_PORT_PC_MULTIPURPOSE) */
 	BOOL compressed;
 	unsigned long pitch; /* linear textures */
+	BOOL hires;         /* a high-res HUD texture drawn in the texture's place (hud_hires.h) */
+	BOOL hires_coverage; /* ... whose green is its coverage (a meter's) */
 };
 
 void xgpu_texture_describe(DWORD format_word, DWORD size_word, struct xgpu_texture_description *description);

@@ -111,6 +111,13 @@ struct dump_datum
 
 /* ---------- prototypes */
 
+/* port/linux/game/network_objects.c's: a client of the distributed netcode
+makes the host's objects at the host's datum indices, and deletes them only
+on the host's word */
+long network_objects_new_object_index(void);
+boolean network_objects_creating_host_object(void);
+boolean network_objects_may_delete(long object_index);
+
 static void object_connect_lights(long object_index, boolean disconnect, boolean reconnect);
 static void object_name_list_allocate(void);
 static void object_name_list_free(void);
@@ -289,7 +296,7 @@ void *object_iterator_next(
 	abs_index = iterator->absolute_index;
 
 	// The operation to get this header is inlined in the original code?
-	header = (struct object_header_datum *)((char*)object_header_data->data + sizeof(struct object_header_datum) * abs_index);
+	header = (struct object_header_datum *)((char*)xbox_pointer(object_header_data->data) + sizeof(struct object_header_datum) * abs_index);
 
 	while (abs_index<object_header_data->count)
 	{
@@ -444,7 +451,7 @@ void objects_information_get(
 
 	memset(information, 0, sizeof(*information));
 	
-	header = (struct object_header_datum *)object_header_data->data;
+	header = (struct object_header_datum *)xbox_pointer(object_header_data->data);
 	for (i = 0; i<object_header_data->count; header++)
 	{
 		if (header->identifier)
@@ -989,13 +996,9 @@ void objects_initialize(
 	}
 	else
 	{
-#ifdef HALO_LINUX
 		/* five times the native builds' object limit would not fit a data
 		array's short count */
 		object_header_data = data_new("object", SHORT_MAX, sizeof(struct object_header_datum));
-#else
-		object_header_data = data_new("object", MAXIMUM_OBJECTS_PER_MAP*5, sizeof(struct object_header_datum));
-#endif
 		object_memory_pool = memory_pool_new("objects", OBJECT_MEMORY_POOL_SIZE*5);
 	}
 	match_assert("c:\\halo\\SOURCE\\objects\\objects.c", 216, object_header_data && object_memory_pool);
@@ -1241,14 +1244,12 @@ short object_get_first_cluster(
 real_matrix4x3 *object_get_node_matrices(
 	long object_index)
 {
-#ifdef HALO_LINUX
 	/* while a frame is drawn, the pose between the last two ticks
 	(port/linux/game/render_interpolation.c) */
 	real_matrix4x3 *interpolated = render_interpolation_object_node_matrices(object_index);
 
 	if (interpolated)
 		return interpolated;
-#endif
 	return (real_matrix4x3 *)object_header_block_get(object_index, &object_get(object_index)->object.node_matrices);
 }
 
@@ -1740,6 +1741,8 @@ static void object_delete_initial_recursive(
 void object_delete(
 	long object_index)
 {
+	if (!network_objects_may_delete(object_index))
+		return;
 	object_delete_initial_recursive(object_index, FALSE);
 
 	return;
@@ -1765,20 +1768,14 @@ void object_reconnect_to_map(
 	}
 	else
 	{
-#ifdef HALO_LINUX
 		/* location may point here after the if below: declared inside it,
 		the location would be read after its lifetime ended, which an
 		optimising compiler is free to break (release builds crashed placing
 		objects at level start, reading a stack slot reused meanwhile) */
 		struct location bounding_sphere_location;
 
-#endif
 		if (!location)
 		{
-#ifndef HALO_LINUX
-			struct location bounding_sphere_location;
-#endif
-
 			scenario_location_from_point(&bounding_sphere_location, &object->object.bounding_sphere_center);
 			location = &bounding_sphere_location;
 
@@ -1841,14 +1838,12 @@ real_matrix4x3 *object_get_node_matrix(
 {
 	match_assert("c:\\halo\\SOURCE\\objects\\objects.c", 1060, object_has_node(object_index, node_index));
 
-#ifdef HALO_LINUX
 	{
 		real_matrix4x3 *interpolated = render_interpolation_object_node_matrices(object_index);
 
 		if (interpolated)
 			return &interpolated[node_index];
 	}
-#endif
 	return &((real_matrix4x3 *)object_header_block_get(object_index, &object_get(object_index)->object.node_matrices))[node_index];
 }
 
@@ -2927,7 +2922,7 @@ void object_render_debug(
 		real_vector3d velocity;
 		real_matrix4x3 world_matrix;
 		
-		char* model_name = strrchr(object_definition->object.model.name, '\\');
+		char* model_name = strrchr(xbox_pointer(object_definition->object.model.name), '\\');
 		object_get_world_matrix(object_index, &world_matrix);
 		object_get_velocities(object_index, &velocity, NULL);
 
@@ -3277,7 +3272,10 @@ long object_new(
 	match_assert_valid_real_vector3d("c:\\halo\\SOURCE\\objects\\objects.c", 620, &data->angular_velocity);
 	match_assert_valid_real_vector3d("c:\\halo\\SOURCE\\objects\\objects.c", 621, &data->translational_velocity);
 
-	if (game_engine_running() && definition_index!=NONE)
+	if (game_engine_running() && definition_index!=NONE
+		/* (the host's object, which the host made as the game type has it) */
+		&& !network_objects_creating_host_object()
+		)
 	{
 		definition_index = game_engine_remap_object_definition(definition_index);
 	}
@@ -3287,7 +3285,8 @@ long object_new(
 		struct object_definition *object_definition = object_definition_get(definition_index);
 		struct object_type_definition *type_definition = object_type_definition_get(object_definition->object.type);
 
-		object_index = object_header_new(object_header_data, NONE, type_definition->game_datum_size);
+		object_index = object_header_new(object_header_data, network_objects_new_object_index(),
+			type_definition->game_datum_size);
 
 		if (object_index!=NONE)
 		{
@@ -3604,6 +3603,41 @@ boolean object_force_inside_bsp(
 	return result;
 }
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+#include "halo_phase_profile.h"
+extern void platform_log(char const *format, ...);
+static struct halo_phase_timing object_sections[6];
+static uint64_t object_sections_since;
+static void object_section(unsigned slot, uint64_t *begin, boolean sampled)
+{
+    if (sampled) {
+        uint64_t now = halo_profile_now_us(), elapsed = now - *begin;
+        struct halo_phase_timing *t = &object_sections[slot];
+        t->calls++; t->total_us += elapsed;
+        if (elapsed > t->max_us) t->max_us = elapsed;
+        *begin = now;
+    }
+}
+static void object_sections_report(void)
+{
+    uint64_t now = halo_profile_now_us();
+    static char const *names[] = { "type_update", "damage_export", "node_matrices", "functions_colors", "lights", "postprocess" };
+    if (!object_sections_since) object_sections_since = now;
+    if (now-object_sections_since < 5000000) return;
+    for (unsigned i=0;i<6;i++)
+        platform_log("[object_pass] tick=%ld sampled=1/16 part=%s calls=%llu cpu_us=%llu max_us=%llu",
+            game_time_get(), names[i], (unsigned long long)object_sections[i].calls,
+            (unsigned long long)object_sections[i].total_us, (unsigned long long)object_sections[i].max_us);
+    lights_reconnect_profile_report();
+    object_type_profile_report();
+    { extern void biped_profile_report(void); biped_profile_report(); }
+    memset(object_sections,0,sizeof(object_sections)); object_sections_since=now;
+}
+#define OBJECT_SECTION(n) object_section(n, &section_begin, sampled)
+#else
+#define OBJECT_SECTION(n) ((void)0)
+#endif
+
 static boolean object_update(
 	long object_index)
 {
@@ -3611,6 +3645,10 @@ static boolean object_update(
 	struct object_datum *object = object_get(object_index);
 	struct object_definition *object_definition = object_definition_get(object->definition_index);
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+    boolean sampled = (object_index & 15) == (game_time_get() & 15);
+    uint64_t section_begin = sampled ? halo_profile_now_us() : 0;
+#endif
 	boolean result = TRUE;
 	if (!TEST_FLAG(header->flags, _object_header_do_not_update_bit))
 	{
@@ -3630,20 +3668,24 @@ static boolean object_update(
 		}
 
 		object_type_update(object_index);
+		OBJECT_SECTION(0);
 		if (object_definition->object.collision_model.index!=NONE)
 		{
 			object_damage_update(object_index);
 		}
 
 		object_type_export_function_values(object_index);
+		OBJECT_SECTION(1);
 
 		if (!TEST_FLAG(object->object.flags, _object_do_not_recompute_node_matrices_bit))
 		{
 			object_compute_node_matrices(object_index);
 		}
 
+		OBJECT_SECTION(2);
 		object_compute_function_values(object_index);
 		object_compute_change_colors(object_index);
+		OBJECT_SECTION(3);
 
 		if (
 			TEST_FLAG(object->object.flags, _object_dynamic_lighting_recompute_bit) &&
@@ -3656,6 +3698,7 @@ static boolean object_update(
 			object_connect_lights(object_index, TRUE, TRUE);
 		}
 
+		OBJECT_SECTION(4);
 		// Update children (if we have any)
 		if (object->object.first_child_object_index!=NONE)
 		{
@@ -3670,7 +3713,11 @@ static boolean object_update(
 			}
 		}
 
+#if defined(__linux__) || defined(HALO_ANDROID)
+        if (sampled) section_begin = halo_profile_now_us();
+#endif
 		object_postprocess_node_matrices(object_index);
+		OBJECT_SECTION(5);
 	}
 
 	return result;
@@ -3830,13 +3877,14 @@ void objects_scripting_attach(
 void object_delete_immediately(
 	long object_index)
 {
+	if (!network_objects_may_delete(object_index))
+		return;
 	object_delete_initial_recursive(object_index, FALSE);
 	object_delete_recursive(object_index, FALSE);
 
 	return;
 }
 
-#ifdef HALO_LINUX
 /* the active garbage limits are per 16 players: a session of up to 128
 keeps proportionally more garbage around, campaign and smaller games the
 Xbox's amount */
@@ -3848,7 +3896,6 @@ static long active_garbage_limit(
 	return limit_per_16_players * MAX(16, player_count) / 16;
 }
 
-#endif
 void objects_garbage_collection(
 	void)
 {
@@ -3875,11 +3922,7 @@ void objects_garbage_collection(
 		}
 		else
 		{
-#ifdef HALO_LINUX
 			if (object_globals->active_garbage_object_count>=active_garbage_limit(GARBAGE_LIMIT_ACTIVE_GARBAGE_TRIGGER))
-#else
-			if (object_globals->active_garbage_object_count>=GARBAGE_LIMIT_ACTIVE_GARBAGE_TRIGGER)
-#endif
 			{
 				garbage_collect_mode = _garbage_collect_active_objects;
 			}
@@ -3936,12 +3979,8 @@ void objects_garbage_collection(
 					should_collect = FALSE;
 					break;
 				case _garbage_collect_active_objects:
-#ifdef HALO_LINUX
 					should_collect = object_globals->active_garbage_object_count<=
 						active_garbage_limit(GARBAGE_LIMIT_ACTIVE_GARBAGE_TARGET);
-#else
-					should_collect = object_globals->active_garbage_object_count<=GARBAGE_LIMIT_ACTIVE_GARBAGE_TARGET;
-#endif
 					break;
 				case _garbage_collect_for_space:
 					should_collect =
@@ -4199,7 +4238,7 @@ void objects_update(
 
 	if (csmemcmp(last_active_cluster_bits, active_cluster_bits, BIT_VECTOR_SIZE_IN_BYTES(cluster_count)))
 	{
-		object_header = (struct object_header_datum *)object_header_data->data;
+		object_header = (struct object_header_datum *)xbox_pointer(object_header_data->data);
 		for (i = 0; i<object_header_data->count; ++object_header)
 		{
 			if (object_header->identifier &&
@@ -4240,7 +4279,7 @@ void objects_update(
 			cluster_count);
 	}
 
-	object_header = (struct object_header_datum *)object_header_data->data;
+	object_header = (struct object_header_datum *)xbox_pointer(object_header_data->data);
 	for (i = 0; i<object_header_data->count; ++object_header)
 	{
 		if (object_header->identifier)
@@ -4263,7 +4302,7 @@ void objects_update(
 		++i;
 	}
 
-	object_header = (struct object_header_datum *)object_header_data->data;
+	object_header = (struct object_header_datum *)xbox_pointer(object_header_data->data);
 	for (i = 0; i<object_header_data->count; ++object_header)
 	{
 		if (object_header->identifier)
@@ -4288,6 +4327,9 @@ void objects_update(
 	}
 
 	objects_garbage_collection();
+#if defined(__linux__) || defined(HALO_ANDROID)
+    object_sections_report();
+#endif
 
 	profile_exit(section);
 
@@ -4323,14 +4365,12 @@ static void object_connect_lights(
 		{
 			if (!object->object.attachment_types[i] && object->object.attachment_indices[i]!=NONE)
 			{
-				if (disconnect)
-				{
-					light_disconnect_from_map(object->object.attachment_indices[i]);
-				}
-				if (reconnect)
-				{
-					light_reconnect_to_map(object->object.attachment_indices[i]);
-				}
+                if (disconnect && reconnect)
+                    light_refresh_map_attachment(object->object.attachment_indices[i]);
+                else {
+                    if (disconnect) light_disconnect_from_map(object->object.attachment_indices[i]);
+                    if (reconnect) light_reconnect_to_map(object->object.attachment_indices[i]);
+                }
 			}
 		}
 	}

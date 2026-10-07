@@ -211,7 +211,7 @@ symbols in this file:
 #include "projectiles.h"
 
 #include "ai/actors.h"
-#include "ai/ai_runtime.h"
+#include "ai/ai.h"
 #include "cache/cache_files.h"
 #include "cseries/profile.h"
 #include "effects/effect_definitions.h"
@@ -221,6 +221,7 @@ symbols in this file:
 #include "game/game_engine.h"
 #include "game/players.h"
 #include "interface/first_person_weapons.h"
+#include "math/periodic_functions.h"
 #include "models/model_animation_definitions.h"
 #include "objects/damage.h"
 #include "scenario/scenario.h"
@@ -228,6 +229,15 @@ symbols in this file:
 #include "sound/sound_definitions.h"
 #include "units/unit_definitions.h"
 #include "units/units.h"
+
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+#include "bitmaps/bitmap_group.h"
+#include "cache/texture_cache.h"
+#include "effects/contrail_definitions.h"
+#endif
+
+/* port/linux/game/pal_tags.c's */
+short pal_tags_first_person_frames(long graph_index, short animation_index, short frames);
 
 /* ---------- constants */
 
@@ -357,13 +367,6 @@ struct trigger_firing_effect
 
 /* ---------- prototypes */
 
-real transition_function_evaluate(
-	short function_type,
-	real value);
-void unit_handle_weapon_state_change(
-	long object_index,
-	short new_state);
-
 static struct weapon_trigger *weapon_trigger_get(
 	struct weapon_datum *weapon,
 	short trigger_index);
@@ -491,7 +494,7 @@ struct weapons_globals
 	struct profile_section update_profile;
 };
 
-struct weapons_globals data_00307140 =
+static struct weapons_globals data_00307140 =
 {
 	{"~primary-blur", "~secondary-blur"},
 	{"weapon_update", NONE, TRUE}
@@ -522,6 +525,58 @@ void weapons_dispose(
 {
 	return;
 }
+
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+/* A trail's first draw requests its bitmap asynchronously and is skipped
+until that read finishes. Warm only the projectile trails of a weapon that
+has been created or readied, before its first shot. Keep ordinary
+streaming nonblocking and leave the original trail tags and lifetime alone. */
+static void weapon_precache_projectile_trails(
+	long definition_index)
+{
+	if (definition_index != NONE)
+	{
+		struct weapon_definition *definition = weapon_definition_get(definition_index);
+		short trigger_index;
+
+		for (trigger_index = 0; trigger_index < definition->weapon.triggers.count; trigger_index++)
+		{
+			struct weapon_trigger_definition *trigger = TAG_BLOCK_GET_ELEMENT(
+				&definition->weapon.triggers, trigger_index, struct weapon_trigger_definition);
+
+			if (trigger->projectile.index != NONE)
+			{
+				struct projectile_definition *projectile = projectile_definition_get(trigger->projectile.index);
+				short attachment_index;
+
+				for (attachment_index = 0; attachment_index < projectile->object.attachments.count; attachment_index++)
+				{
+					struct object_attachment_definition *attachment = TAG_BLOCK_GET_ELEMENT(
+						&projectile->object.attachments, attachment_index, struct object_attachment_definition);
+
+					if (attachment->type.group_tag == CONTRAIL_DEFINITION_TAG && attachment->type.index != NONE)
+					{
+						struct contrail_definition *contrail = contrail_definition_get(attachment->type.index);
+
+						if (contrail->bitmap.index != NONE)
+						{
+							struct bitmap_group *bitmap = bitmap_group_get(contrail->bitmap.index);
+							short bitmap_index;
+
+							for (bitmap_index = 0; bitmap_index < bitmap->bitmaps.count; bitmap_index++)
+							{
+								_texture_cache_bitmap_get_hardware_format(
+									TAG_BLOCK_GET_ELEMENT(&bitmap->bitmaps, bitmap_index, struct bitmap_data),
+									FALSE, TRUE);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+#endif
 
 void weapon_place(
 	long weapon_index,
@@ -554,6 +609,9 @@ void weapon_ready(
 	struct weapon_datum* weapon = weapon_get(weapon_index);
 	struct weapon_definition *weapon_definition = weapon_definition_get(weapon->definition_index);
 
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	weapon_precache_projectile_trails(weapon->definition_index);
+#endif
 	weapon_reset(weapon_index);
 	weapon_set_state(weapon_index, _weapon_state_ready, TRUE);
 	first_person_weapon_message_from_weapon(weapon_index, _first_person_weapon_message_ready);
@@ -761,6 +819,9 @@ boolean weapon_new(
 		trigger->idle_ticks = 127;
 	}
 
+#ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
+	weapon_precache_projectile_trails(weapon->definition_index);
+#endif
 	return TRUE;
 }
 
@@ -1249,6 +1310,9 @@ short weapon_get_first_person_animation_time(
 					{
 					case _weapon_first_person_animation_time_frame_count:
 						time = animation->frame_count;
+						/* port: a PAL map's animation, the NTSC maps' frame count (port/linux/game/pal_tags.c) */
+						time = pal_tags_first_person_frames(weapon_definition->weapon.interface_definition.first_person_animations.index,
+							animation_index, time);
 						break;
 
 					case _weapon_first_person_animation_time_private_key_frame:
@@ -1278,6 +1342,16 @@ short weapon_get_first_person_animation_time(
 						case _shotgun_reload_type_first_and_last_round:
 							time = shotgun_enter->frame_count;
 							break;
+						}
+						/* port: the NTSC maps' frame count, as above */
+						if ((shotgun_reload_type == _shotgun_reload_type_first_round ||
+							shotgun_reload_type == _shotgun_reload_type_first_and_last_round) &&
+							_first_person_weapon_animation_shotgun_enter < weapon_animations->animations.count)
+						{
+							time = pal_tags_first_person_frames(
+								weapon_definition->weapon.interface_definition.first_person_animations.index,
+								animation_graph_animation_index_get(&weapon_animations->animations)[_first_person_weapon_animation_shotgun_enter].animation_index,
+								time);
 						}
 					}
 				}
@@ -1627,6 +1701,17 @@ static struct weapon_trigger *weapon_trigger_get(
 	struct weapon_definition const *weapon_definition = weapon_definition_get(weapon->definition_index);
 
 	match_assert("c:\\halo\\SOURCE\\items\\weapons.c", 1639, trigger_index>=0 && trigger_index<weapon_definition->weapon.triggers.count);
+#ifdef HALO_CUSTOM_EDITION
+	/* port: no slot the datum does not have, in any build (the map checks
+	refuse a weapon with more triggers than it: ce_map_checks.c) */
+	if (trigger_index<0 || trigger_index>=NUMBEROF(weapon->weapon.triggers))
+	{
+		static struct weapon_trigger no_trigger;
+
+		memset(&no_trigger, 0, sizeof(no_trigger));
+		return &no_trigger;
+	}
+#endif
 
 	return &weapon->weapon.triggers[trigger_index];
 }
@@ -1637,7 +1722,34 @@ static struct weapon_magazine *weapon_magazine_get(
 {
 	struct weapon_definition const *weapon_definition = weapon_definition_get(weapon->definition_index);
 
+#ifdef HALO_CUSTOM_EDITION
+	/* port: a Custom Edition or HaloMD map's weapon may have a trigger that
+	charges with no magazine (a HaloMD map's trip mine), whose magazine
+	weapon_update reads as it charges. Halo PC's engine read the slot before
+	the first; this one, for such maps only, reads a full magazine that is
+	never kept (a trigger with none fires without ammunition), and in any
+	build reads no slot the datum does not have (the map checks refuse a
+	weapon with more magazines than it: ce_map_checks.c). An Xbox map's are
+	asserted as they always were */
+	if (magazine_index<0 || magazine_index>=weapon_definition->weapon.magazines.count ||
+		magazine_index>=NUMBEROF(weapon->weapon.magazines))
+	{
+		static struct weapon_magazine no_magazine;
+		extern boolean cache_file_tags_are_ce(void);
+
+		if (!(magazine_index==NONE && cache_file_tags_are_ce()))
+		{
+			match_assert("c:\\halo\\SOURCE\\items\\weapons.c", 1650,
+				magazine_index>=0 && magazine_index<weapon_definition->weapon.magazines.count);
+		}
+		memset(&no_magazine, 0, sizeof(no_magazine));
+		no_magazine.rounds_total = SHORT_MAX;
+		no_magazine.rounds_loaded = SHORT_MAX;
+		return &no_magazine;
+	}
+#else
 	match_assert("c:\\halo\\SOURCE\\items\\weapons.c", 1650, magazine_index>=0 && magazine_index<weapon_definition->weapon.magazines.count);
+#endif
 
 	return &weapon->weapon.magazines[magazine_index];
 }
@@ -2018,7 +2130,8 @@ static boolean weapon_state_interruptable(
 }
 
 void weapon_preprocess_node_orientations(
-	long weapon_index)
+	long weapon_index,
+	struct real_orientation *node_orientations)
 {
 	struct weapon_datum *weapon = weapon_get(weapon_index);
 	struct weapon_definition *weapon_definition = weapon_definition_get(weapon->definition_index);

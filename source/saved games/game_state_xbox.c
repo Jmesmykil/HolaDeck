@@ -108,15 +108,10 @@ symbols in this file:
 enum
 {
 	CPU_PAGE_SIZE = 0x1000,
-#ifdef HALO_LINUX
 	/* the native builds' larger game state (halo_port_capacity.h); the saved
 	game files only need to hold it */
 	GAME_STATE_SIZE = HALO_PORT_GAME_STATE_SIZE,
 	GAME_STATE_FILE_SIZE = HALO_PORT_GAME_STATE_SIZE
-#else
-	GAME_STATE_SIZE = 0x345000,
-	GAME_STATE_FILE_SIZE = 0x380000
-#endif
 };
 
 /* ---------- structures */
@@ -132,6 +127,7 @@ struct xbox_game_state_globals_prefix
 	byte reserved00E[2];
 	HANDLE handle;
 };
+#ifndef HALO_64BIT
 
 typedef char verify_xbox_game_state_buffer_offset[
 	offsetof(struct xbox_game_state_globals_prefix, buffer) == 0x4 ? 1 : -1];
@@ -141,6 +137,7 @@ typedef char verify_xbox_game_state_handle_offset[
 	offsetof(struct xbox_game_state_globals_prefix, handle) == 0x10 ? 1 : -1];
 typedef char verify_xbox_game_state_globals_prefix_size[
 	sizeof(struct xbox_game_state_globals_prefix) == 0x14 ? 1 : -1];
+#endif
 
 /* ---------- prototypes */
 
@@ -149,7 +146,7 @@ static HANDLE game_state_open_persistent_storage(
 
 /* ---------- globals */
 
-struct xbox_game_state_globals_prefix xbox_game_state_globals = { 0 };
+static struct xbox_game_state_globals_prefix xbox_game_state_globals = { 0 };
 
 /* ---------- public code */
 
@@ -190,18 +187,33 @@ void *game_state_allocate_buffer(
 		"c:\\halo\\SOURCE\\saved games\\game_state_xbox.c",
 		58,
 		result);
+#ifdef HALO_64BIT
+	match_assert(
+		"c:\\halo\\SOURCE\\saved games\\game_state_xbox.c",
+		59,
+		xbox_address(result)==address);
+#else
 	match_assert(
 		"c:\\halo\\SOURCE\\saved games\\game_state_xbox.c",
 		59,
 		(unsigned long)result==address);
+#endif
 
 	XPhysicalProtect(
+#ifdef HALO_64BIT
+		xbox_pointer(address+cpu_size),
+#else
 		(void *)(address+cpu_size),
+#endif
 		gpu_size,
 		PAGE_READWRITE|PAGE_WRITECOMBINE);
 
 	xbox_game_state_globals.buffer_allocated = TRUE;
+#ifdef HALO_64BIT
+	xbox_game_state_globals.buffer = xbox_pointer(address);
+#else
 	xbox_game_state_globals.buffer = (void *)address;
+#endif
 	xbox_game_state_globals.buffer_size = cpu_size+gpu_size;
 
 	return result;

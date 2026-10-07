@@ -249,7 +249,6 @@ symbols in this file:
 enum
 {
 	MAXIMUM_SOUND_CHANNELS = 256,
-	MAXIMUM_NUMBER_OF_LOCAL_PLAYERS = 4,
 	MAXIMUM_SOUND_CALLBACK_DATA = 0x30,
 };
 
@@ -544,17 +543,22 @@ typedef char verify_sound_source_size[
 	sizeof(struct sound_source) == 0x40 ? 1 : -1];
 typedef char verify_sound_listener_size[
 	sizeof(struct sound_listener) == 0x44 ? 1 : -1];
+#ifndef HALO_64BIT
 typedef char verify_sound_channel_datum_size[
 	sizeof(struct sound_channel_datum) == 0x18 ? 1 : -1];
+#endif
 typedef char verify_sound_channel_summary_size[
 	sizeof(struct sound_channel_summary) == 0x48 ? 1 : -1];
 typedef char verify_platform_sound_channel_properties_size[
 	sizeof(struct platform_sound_channel_properties) == 0x20 ? 1 : -1];
+#ifndef HALO_64BIT
 typedef char verify_sound_datum_size[
 	sizeof(struct sound_datum) == 0xAC ? 1 : -1];
+#endif
 typedef char verify_looping_sound_datum_size[
 	sizeof(struct looping_sound_datum) == 0xE4 ? 1 : -1];
 
+#ifndef HALO_64BIT
 typedef char verify_sound_manager_globals_size[
 	sizeof(struct sound_manager_globals) == 0x178 ? 1 : -1];
 typedef char verify_sound_platform_definition_size[
@@ -563,12 +567,14 @@ typedef char verify_sound_platform_dispose_offset[
 	offsetof(struct sound_platform_definition, dispose) == 0x8 ? 1 : -1];
 typedef char verify_sound_platform_pause_offset[
 	offsetof(struct sound_platform_definition, set_pause) == 0x28 ? 1 : -1];
+#endif
 typedef char verify_sound_manager_paused_offset[
 	offsetof(struct sound_manager_globals, paused) == 0x2 ? 1 : -1];
 typedef char verify_sound_manager_dialog_time_offset[
 	offsetof(
 		struct sound_manager_globals,
 		game_time_when_no_scripted_dialog_will_be_playing) == 0x4 ? 1 : -1];
+#ifndef HALO_64BIT
 typedef char verify_sound_manager_listeners_offset[
 	offsetof(struct sound_manager_globals, listeners) == 0x18 ? 1 : -1];
 typedef char verify_sound_manager_environment_offset[
@@ -576,6 +582,7 @@ typedef char verify_sound_manager_environment_offset[
 typedef char verify_sound_manager_channel_count_offset[
 	offsetof(struct sound_manager_globals, channel_count) == 0x174 ? 1 : -1];
 
+#endif
 /* ---------- prototypes */
 
 static void sound_update_time(
@@ -706,11 +713,11 @@ static void prioritize_sounds(
 
 /* ---------- globals */
 
-extern struct data_array *looping_sound_data;
-extern struct data_array *sound_data;
-extern struct sound_channel_datum sound_channels[MAXIMUM_SOUND_CHANNELS];
-extern boolean loud_dialog_hack;
-extern boolean debug_looping_sound;
+struct data_array *looping_sound_data;
+struct data_array *sound_data;
+struct sound_channel_datum sound_channels[MAXIMUM_SOUND_CHANNELS];
+boolean loud_dialog_hack;
+boolean debug_looping_sound;
 
 static real const sound_pitch_range_fade_time = 0.5f;
 static real const sound_inaudible_fade_out_time = 2.f;
@@ -730,6 +737,8 @@ static struct profile_section sound_render_section =
 	{"sound_render", NONE, TRUE};
 real sound_fade_exponent = 2.5f;
 static struct sound_manager_globals sound_manager_globals = { 0 };
+boolean debug_sound;
+boolean debug_sound_channels;
 
 /* ---------- public code */
 
@@ -1114,10 +1123,31 @@ static short sound_definition_promote(
 	return result;
 }
 
+/* port: config.toml's audio.music_volume and audio.effects_volume, read
+again when Settings changes them */
+double config_real(const char *name);
+unsigned long config_changes(void);
+
+static real sound_manager_port_volume(
+	short class_index)
+{
+	static unsigned long read_at = (unsigned long)-1;
+	static real music_volume = 1.f;
+	static real effects_volume = 1.f;
+
+	if (read_at != config_changes())
+	{
+		read_at = config_changes();
+		music_volume = PIN((real)config_real("audio.music_volume"), 0.f, 1.f);
+		effects_volume = PIN((real)config_real("audio.effects_volume"), 0.f, 1.f);
+	}
+	return class_index == _sound_class_music ? music_volume : effects_volume;
+}
+
 static real sound_manager_master_gain(
 	short class_index)
 {
-	real gain = sound_class_get_gain(class_index);
+	real gain = sound_class_get_gain(class_index) * sound_manager_port_volume(class_index);
 
 	if (class_index != _sound_class_scripted_dialog_to_player &&
 		class_index != _sound_class_scripted_dialog_to_other &&
@@ -2044,6 +2074,10 @@ static real source_distance_squared(
 			source->location.position.z * source->location.position.z;
 		break;
 
+	/* distance_squared is left unassigned only by this default arm. Not reached unassigned: the
+	 * arm's assertion failure calls system_exit, which does not return in January
+	 * (0x47c960 jumps to halt_and_catch_fire 0x4f21c0, which loops or calls exit).
+	 * Source-policy approval pending (2026-09-27 audit). */
 	default:
 		match_vassert(
 			"c:\\halo\\SOURCE\\sound\\sound_manager.c",
@@ -2386,7 +2420,14 @@ long sound_new_impulse(
 
 	if (sound_manager_globals.initialized && sound_manager_globals.enabled)
 	{
+#ifdef HALO_CUSTOM_EDITION
+		/* (port: 16-bit PCM too, as Halo PC's Ogg Vorbis sounds are decoded:
+		port/linux/game/ce_resources.c) */
+		if ((definition->compression == _sound_compression_xbox_adpcm ||
+				definition->compression == _sound_compression_none) &&
+#else
 		if (definition->compression == _sound_compression_xbox_adpcm &&
+#endif
 			((definition->encoding == _sound_encoding_mono &&
 				definition->sample_rate == 0) ||
 				definition->encoding == _sound_encoding_stereo))
@@ -2509,9 +2550,14 @@ long sound_new_impulse(
 		}
 		else
 		{
+			/* (port: which sound, and what it is) */
 			error(
 				_error_silent,
-				"attempt to play a sound that was not a mono 22k compressed sound or a stereo 22k or 44k compressed sound.");
+				"attempt to play a sound that was not a mono 22k compressed sound or a stereo 22k or 44k compressed sound: %s (compression %d, encoding %d, sample rate %d)",
+				tag_get_name(definition_index),
+				definition->compression,
+				definition->encoding,
+				definition->sample_rate);
 		}
 	}
 
@@ -3146,6 +3192,31 @@ void sound_dispose_from_old_map(
 	if (looping_sound_data)
 	{
 		data_delete_all(looping_sound_data);
+	}
+
+	/* port: a channel still holding a permutation that no sound owns any
+	longer (a weapon's charging loop, as a network game ended) stopped too,
+	so that its cache count is given back while the map's sounds are still
+	there; else the next map's sound_render finished it against the next
+	map's sound cache (sound_cache_sound_finished: "xbox sound index ... is
+	unused or changed") */
+	if (sound_manager_globals.initialized)
+	{
+		short channel_index;
+
+		for (
+			channel_index = 0;
+			channel_index < sound_manager_globals.channel_count;
+			channel_index++)
+		{
+			struct sound_channel_datum *channel = channel_get(channel_index);
+
+			if (channel->playing_permutation || channel->queued_permutation)
+			{
+				channel_stop(channel_index);
+				channel->sound_index = NONE;
+			}
+		}
 	}
 
 	return;
@@ -3816,7 +3887,6 @@ void sound_render(
 				((real)render_time - sound_manager_globals.render_time) *
 				0.029999999f;
 			sound_manager_globals.render_time = render_time;
-#ifdef HALO_LINUX
 			/* Sounds are rendered once a frame, and a frame is well under a
 			tick on the native builds, so the ticks truncate to none and
 			scripted sound class fades would never move: carry the
@@ -3830,9 +3900,6 @@ void sound_render(
 				leftover_ticks -= (real)ticks;
 				sound_classes_update(ticks);
 			}
-#else
-			sound_classes_update((long)sound_manager_globals.ticks_elapsed);
-#endif
 			refresh_listener();
 			process_looping_sounds();
 			refresh_sounds();

@@ -27,12 +27,16 @@ void progress_bar_dispose(
 	void);
 void progress_bar_begin(
 	boolean skip_frame_capture);
+/* Completed native loading stages; no timer-based progress. */
+void progress_bar_native_stage(real progress, char const *stage);
 void progress_bar_end(
 	void);
 boolean progress_bar_is_active(
 	void);
 void progress_bar_enable(
 	boolean enabled);
+void progress_bar_eachframe(
+	void);
 void progress_bar_display(
 	real progress);
 boolean progress_bar_is_stuff_ready(

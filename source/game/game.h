@@ -150,6 +150,11 @@ void game_difficulty_level_set(short difficulty);
 short game_difficulty_level_get(void);
 short game_difficulty_level_get_ignore_easy(void);
 void game_set_game_variant(struct game_variant *variant);
+/* port: the PC options the game plays by (game_engine.h): the variant's
+defaults once it is set, then the network game's */
+struct game_variant_options;
+void game_set_game_variant_options(struct game_variant_options const *options);
+struct game_variant_options const *game_variant_options_get(void);
 void game_set_game_engine_index(short index);
 boolean game_all_quiet(
 	void);
@@ -179,11 +184,17 @@ long local_time_get(void);
 short local_time_get_elapsed(void);
 boolean game_predicting(void);
 boolean game_in_progress(void);
+boolean game_map_loaded(void);
 boolean game_time_get_paused(void);
+/* whether a client's clock waits for the host's first game update */
+boolean game_time_held(void);
 void game_time_set_paused(boolean paused);
 real game_time_get_speed(void);
 void game_time_set_speed(real speed);
 void game_time_start(void);
+/* the game time set, before the first tick (a distributed game joined in
+progress: the host's) */
+void game_time_set_distributed(long time);
 void game_time_update(real time_delta_sec);
 
 /* ---------- prototypes/MAIN.C */
@@ -193,5 +204,7 @@ short game_connection(void);
 /* ---------- globals */
 
 /* ---------- public code */
+
+boolean game_map_loaded(void);
 
 #endif // __GAME_H

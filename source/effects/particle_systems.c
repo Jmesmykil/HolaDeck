@@ -93,16 +93,10 @@ symbols in this file:
 
 enum
 {
-#ifdef HALO_LINUX
 	/* the native builds' larger particle system pools (halo_port_capacity.h) */
 	MAXIMUM_PARTICLE_SYSTEMS = HALO_PORT_MAXIMUM_PARTICLE_SYSTEMS,
 	PARTICLE_SYSTEM_DATUM_SIZE = 0x158,
 	MAXIMUM_SYSTEM_PARTICLES = HALO_PORT_MAXIMUM_SYSTEM_PARTICLES,
-#else
-	MAXIMUM_PARTICLE_SYSTEMS = 64,
-	PARTICLE_SYSTEM_DATUM_SIZE = 0x158,
-	MAXIMUM_SYSTEM_PARTICLES = 512,
-#endif
 	SYSTEM_PARTICLE_DATUM_SIZE = 0x80,
 };
 
@@ -132,18 +126,18 @@ static void particle_system_delete(
 	long system_index);
 static boolean particle_system_initialize(
 	long system_index);
-void particle_system_update_default(
+static void particle_system_update_default(
 	struct particle_system_datum *system,
 	real delta_time);
-void particle_system_update_explosion(
+static void particle_system_update_explosion(
 	struct particle_system_datum *system,
 	real delta_time);
-void particle_system_new_particle_default(
+static void particle_system_new_particle_default(
 	struct particle_system_datum const *system,
 	short type_index,
 	struct ps_particle_datum *particle,
 	struct object_marker const *marker);
-void particle_system_update(
+static void particle_system_update(
 	real delta_time,
 	long system_index);
 static void particle_system_render(
@@ -155,17 +149,17 @@ static void particle_system_next_type_state_index(
 static void particle_system_next_particle_state_index(
 	struct ps_particle_datum *particle,
 	struct particle_system_type const *type_definition);
-void particle_system_new_particle_explosion(
+static void particle_system_new_particle_explosion(
 	struct particle_system_datum const *system,
 	short type_index,
 	struct ps_particle_datum *particle,
 	struct object_marker const *marker);
-void particle_system_update_particle_default(
+static void particle_system_update_particle_default(
 	struct particle_system_datum const *system,
 	short type_index,
 	real delta_time,
 	struct ps_particle_datum *particle);
-void particle_system_new_particle_jet(
+static void particle_system_new_particle_jet(
 	struct particle_system_datum const *system,
 	short type_index,
 	struct ps_particle_datum *particle,
@@ -201,6 +195,8 @@ static particle_system_particle_update_proc const particle_update_functions[] =
 
 real const ground_error = 0.05f;
 static real const seconds_per_tick = 1.0f/TICKS_PER_SECOND;
+struct data_array *particle_systems;
+struct data_array *system_particles;
 
 /* ---------- public code */
 
@@ -576,7 +572,7 @@ static boolean particle_system_initialize(
 	return success;
 }
 
-void particle_system_update_default(
+static void particle_system_update_default(
 	struct particle_system_datum *system,
 	real delta_time)
 {
@@ -601,7 +597,7 @@ void particle_system_update_default(
 	return;
 }
 
-void particle_system_new_particle_default(
+static void particle_system_new_particle_default(
 	struct particle_system_datum const *system,
 	short type_index,
 	struct ps_particle_datum *particle,
@@ -613,7 +609,7 @@ void particle_system_new_particle_default(
 	return;
 }
 
-void particle_system_update_explosion(
+static void particle_system_update_explosion(
 	struct particle_system_datum *system,
 	real delta_time)
 {
@@ -767,14 +763,10 @@ static void particle_system_new_particles(
 
 	if ((real)type->particle_count < type->variables.minimum_particle_count)
 	{
-#ifdef HALO_LINUX
 		/* cut short at the rate of 0.3 a tick, not a frame: the native
 		builds update several frames a tick
 		(port/linux/game/render_interpolation.c) */
 		type->time_left_in_state *= (real)pow(0.30000001f, delta_time * TICKS_PER_SECOND);
-#else
-		type->time_left_in_state *= 0.30000001f;
-#endif
 	}
 
 	return;
@@ -800,7 +792,7 @@ void particle_systems_update(
 	return;
 }
 
-void particle_system_update_particle_default(
+static void particle_system_update_particle_default(
 	struct particle_system_datum const *system,
 	short type_index,
 	real delta_time,
@@ -901,7 +893,7 @@ void particle_system_update_particle_default(
 	return;
 }
 
-void particle_system_new_particle_explosion(
+static void particle_system_new_particle_explosion(
 	struct particle_system_datum const *system,
 	short type_index,
 	struct ps_particle_datum *particle,
@@ -952,7 +944,7 @@ void particle_system_new_particle_explosion(
 	return;
 }
 
-void particle_system_new_particle_jet(
+static void particle_system_new_particle_jet(
 	struct particle_system_datum const *system,
 	short type_index,
 	struct ps_particle_datum *particle,
@@ -1037,7 +1029,7 @@ static void randomize_particle_variables(
 	return;
 }
 
-void particle_system_update(
+static void particle_system_update(
 	real delta_time,
 	long system_index)
 {
@@ -1480,6 +1472,19 @@ static void particle_system_render(
 					else
 					{
 						sequence_index = state_definition->sequence_index;
+					}
+					/* port: a rotational sprite's sequence is the one after its state's,
+					which a Halo PC map's bitmap may not have (Hornets Nest's): its
+					state's own then; a particle whose bitmap has neither, or no sprites
+					in it, is not drawn, rather than read past the bitmap's sequences */
+					if (sequence_index >= bitmap->sequences.count)
+						sequence_index = state_definition->sequence_index;
+					if (sequence_index < 0 || sequence_index >= bitmap->sequences.count ||
+						TAG_BLOCK_GET_ELEMENT(&bitmap->sequences, sequence_index,
+							struct bitmap_group_sequence)->sprites.count <= 0)
+					{
+						particle_index = (short)particle->next_particle_index;
+						continue;
 					}
 					sequence = TAG_BLOCK_GET_ELEMENT(
 						&bitmap->sequences,
