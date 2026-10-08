@@ -1,6 +1,4 @@
-# HaloDeck — native Halo for Steam Deck and Linux
-
-## Current Steam Deck/Linux 2.9.5 — lobby editing, voice options and content
+# Steam Deck/Linux 2.9.5 — lobby editing, voice options and content
 
 [Download the runtime and matching source](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9.5-steamdeck-lobby-modes).
 Executable SHA-256: `b3d735a6f78fa495464c6589043245fcf8330580931b949e4f099299e3e1c1db`. Installed on the Steam Deck through its existing shortcut, with the previous runtime retained for rollback.
@@ -17,18 +15,3 @@ Exact executable passed private Deck GPU multiplayer with a native Linux peer. N
 Lunge runtime acceptance, playable sword assets, turret retention, large races, finished campaign faction maps, a complete online mod store, persistent friends and full natural campaign completion remain open. Physical Switch acceptance remains separate. This release does not replace the Switch executable.
 
 [Feature guide](unified/docs/LOBBIES-MODES-CONTENT-2.9.5.md) · [Deck check](releases/v0.2.9.5-steamdeck-lobby-modes/DECK-GPU.json) · [Lobby voice evidence](releases/v0.2.9.5-steamdeck-lobby-modes/LOBBY-VOICE.json).
-## Install and use
-
-Extract the Steam Deck/Linux runtime, provide your own compatible game maps in `assets/maps`, and run `launch_halo.sh` natively with Proton off. Keep your settings and saves when updating; saves use `~/.local/share/halo-linux`. No game maps, resource companions, shader instruction tokens, console keys or personal saves are supplied.
-
-Online campaign supports remote players without requiring a second local controller. Native multiplayer and campaign discovery stay separately filtered by source and version. Classic PC/CE server snapshots remain separate and require a compatible classic client.
-
-CE609 maps and compatible texture packs are supported. Maps using external resource companions need owner-supplied `bitmaps.map`, `sounds.map` and `loc.map` under `assets/maps/ce`. Chimera/OpenSauce/Lua/DLL and other engine extensions require individual native ports.
-
-## Source and history
-
-The matching Linux source is in [unified/](unified/) and the source ZIP attached to the release. Original upstream attribution and licenses are retained. Earlier releases remain available for rollback and historical evidence.
-
-## Credits
-
-The Halo decompilation, OpenCE, native ports and bundled libraries retain their authors and licenses. This unofficial fan project is not endorsed by Microsoft, Bungie or Halo Studios.
