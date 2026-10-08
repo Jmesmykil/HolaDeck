@@ -1,3 +1,7 @@
+## Current Deck build
+
+[Download nativevoice1](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9.4-steamdeck-runtime-nativevoice1); executable SHA-256 `4a083770b6920d2a1f7372ba701967bcf02b840e0d2c3e9bfe7d55bf646964c0`. Default-OFF compatible-native voice and corrected spinner hitboxes are included. See [the current README](README.md) for settings, verified evidence and remaining acceptance limits. Previous releases below are retained for reference.
+
 # Steam Deck / Linux player guide
 
 The latest feature build is [NxHalo Steam Deck Preview 2.4 / v0.2.4](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.4-steamdeck-preview4), a native 32-bit Linux build on network protocol 11. It adds confirmed host Kick/Ban Console actions to the selected-player lobby and retains public online/cross-console/browser discovery, Co-op Campaign, a 128-entry scrollable roster, responsive panels and opt-in Custom Edition map download-and-join from the HaloNet map catalog.
