@@ -6,7 +6,7 @@ Adds default-OFF compatible-native proximity voice with authenticated joined-pla
 
 Exact candidate passed a private Deck GPU multiplayer session with a native Linux peer. Two actual native clients passed generated-PCM capture-to-encrypted-transport-to-spatial-mixer testing with dummy audio and waveform analysis: 605 frames received/mapped, zero mapping drops, no sender loopback, and expiry after PTT release. Actual menu writes and fresh-process reload passed. No physical microphone or external audio was used.
 
-Retains confirmed controller fixes, map download/autojoin, match customization and co-op lifecycle fixes. Voice is still a foundation: physical microphone/human PTT, third-client fanout, persistent Friends, natural campaign completion, physical Switch acceptance and real 128-player capacity remain open. The mixer has 16 active stream slots; the tunnel rate budget is roughly five continuously transmitting speakers, not 128-person voice. [Release evidence](releases/v0.2.9.4-steamdeck-runtime-nativevoice1/release-notes.md).
+Retains confirmed controller fixes, map download/autojoin, match customization and co-op lifecycle fixes. Voice is still a foundation: physical microphone/human PTT, persistent Friends, natural campaign completion, physical Switch acceptance and real 128-player capacity remain open. The mixer has 16 active stream slots; the tunnel rate budget is roughly five continuously transmitting speakers, not 128-person voice. [Release evidence](releases/v0.2.9.4-steamdeck-runtime-nativevoice1/release-notes.md).
 
 # HaloDeck — Unified native Halo for Steam Deck & Linux
 
@@ -53,3 +53,6 @@ The 65-second Deck performance capture above used 2.9.4. Earlier 0f6 tests cover
 ## Credits and licenses
 
 The Halo decompilation, OpenCE, native ports and bundled libraries retain their authors and licenses. [CREDITS.md](CREDITS.md) records project credits; source-file and library notices govern their respective code. HaloDeck's documentation is CC0. This unofficial fan project is not endorsed by Microsoft, Bungie or Halo Studios.
+
+
+**Additional validation, October 8:** Three actual native campaign clients joined and remained alive. Host relayed 606 generated voice frames; the third client received and spatially mixed 596 with zero player-mapping drops. Both receivers passed waveform signal and PTT-expiry checks; the sender had no loopback. All six owned game/display processes exited cleanly. This is a private generated-PCM test, not physical microphone or capacity acceptance. [Metrics](releases/v0.2.9.4-steamdeck-runtime-nativevoice1/THREE-CLIENT-VOICE.json).
