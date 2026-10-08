@@ -1,6 +1,6 @@
 ## Current Deck build
 
-[Download nativevoice1](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9.4-steamdeck-runtime-nativevoice1); executable SHA-256 `4a083770b6920d2a1f7372ba701967bcf02b840e0d2c3e9bfe7d55bf646964c0`. Default-OFF compatible-native voice and corrected spinner hitboxes are included. See [the current README](README.md) for settings, verified evidence and remaining acceptance limits. Previous releases below are retained for reference.
+[Download nativevoice1](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9.4-steamdeck-runtime-nativevoice2); executable SHA-256 `45a62e4765fed3da8c6c895fb824d2e494bd759d7ec96414d743e790c57afc4d`. Default-OFF compatible-native voice and corrected spinner hitboxes are included. See [the current README](README.md) for settings, verified evidence and remaining acceptance limits. Previous releases below are retained for reference.
 
 # Steam Deck / Linux player guide
 
