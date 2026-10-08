@@ -1,6 +1,8 @@
 # HaloDeck — Unified native Halo for Steam Deck & Linux
 
-## Current release: Unified Content Preview 2.9.2 menus (pre-release)
+## Current release: Unified Rules Preview 2.9.3 (pre-release)
+
+[Download v0.2.9.3](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9.3-steamdeck-rules). This release updates cached match presets, protects host-selected modes from clients, exposes replicated rule values in lobbies, and enforces host-side infection melee/loadout behavior. Harness/UI checks passed; old-client skull behavior and broad legacy interoperability remain unverified. Previous 2.9.x releases remain available.
 
 [Download the v0.2.9.2 prerelease](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9.2-steamdeck-menus). It adds organized multiplayer/game-mode menus, a saved game-type editor, and map-aware Zombies sword handling. Previous 2.9 and 2.9.1 releases remain available.
 
