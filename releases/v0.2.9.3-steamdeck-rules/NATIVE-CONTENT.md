@@ -2,13 +2,13 @@
 
 ## Find maps in game
 
-Open **Custom Maps & Mods > Search / Download Community Maps**. Search the map name, move between pages, and select a map to download. The catalog uses HaloNet's live CE listing, caches it locally and shows installed maps. Download and validation failures appear in the status line. The catalog contains thousands of CE campaign and multiplayer entries; listing a map does not establish that every engine extension it uses is supported.
+Open **Custom Maps & Mods > Custom Maps > Browse**. Search the map name, move between pages, and select a map to download. The catalog uses HaloNet's live CE listing, caches it locally and shows installed maps. Download and validation failures appear in the status line. The catalog contains thousands of CE campaign and multiplayer entries; listing a map does not establish that every engine extension it uses is supported.
 
 Supply your own compatible CE bitmaps.map, sounds.map and loc.map through the local importer. Resource files and downloaded game maps are not included in releases.
 
 ## Native texture packs
 
-Open **Custom Maps & Mods > Texture Packs / Steam Deck Upscaling**. Import an unpacked texture-pack folder, choose it from the list, then enable overrides. Original textures are used whenever an override is absent or cannot be decoded. Importing and selecting a pack does not alter game maps.
+Open **Custom Maps & Mods > Texture Packs & Display**. Import an unpacked texture-pack folder, choose it from the list, then enable overrides. Original textures are used whenever an override is absent or cannot be decoded. Importing and selecting a pack does not alter game maps.
 
 Files mirror the original bitmap tag path, with its bitmap ordinal appended:
 

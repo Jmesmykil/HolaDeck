@@ -1,14 +1,12 @@
 # HaloDeck — Unified native Halo for Steam Deck & Linux
 
-## Current release: Unified Rules Preview 2.9.3 (pre-release)
+## Current release: Unified Runtime Preview 2.9.4 (pre-release)
 
-[Download v0.2.9.3](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9.3-steamdeck-rules). This release updates cached match presets, protects host-selected modes from clients, exposes replicated rule values in lobbies, and enforces host-side infection melee/loadout behavior. Harness/UI checks passed; old-client skull behavior and broad legacy interoperability remain unverified. Previous 2.9.x releases remain available.
+[Download v0.2.9.4](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9.4-steamdeck-runtime). Runtime SHA-256: `8335b4f246b592854a91916bb36141c884883eb197eff1f5e59e4fe78aae64fc`. One native executable includes campaign, online co-op and multiplayer profiles 11/20/21 (V11 is multiplayer-only), CE catalog search/download, native texture packs, Deck Off/Quality/Performance rendering and cached match-rule presets. A private two-player V21 `a50` test confirmed host/client movement agreement; it does not prove campaign completion. The exact build is installed and running from the original Steam shortcut on Deck.
 
-[Download the v0.2.9.2 prerelease](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9.2-steamdeck-menus). It adds organized multiplayer/game-mode menus, a saved game-type editor, and map-aware Zombies sword handling. Previous 2.9 and 2.9.1 releases remain available.
+A 65-second two-player Bloodgulch Quality session on this build measured 59.70 fps across four post-load intervals, wall p95 16.825–16.864 ms, p99 16.909–16.949 ms, RSS 210136 KiB (peak 238484 KiB). This is one map/mode/player-count sample. Real 128-player matches, Friends/voice and broad legacy-client interoperability remain unverified. See [release evidence](releases/v0.2.9.4-steamdeck-runtime/VERIFICATION-EVIDENCE.md), [native content guide](releases/v0.2.9.4-steamdeck-runtime/NATIVE-CONTENT.md), and [supported-mods guide](releases/v0.2.9.4-steamdeck-runtime/SUPPORTED-MODS.md).
 
-[Download the v0.2.9.1 hotfix](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9.1-steamdeck-content). It fixes activation for existing texture-pack rows. The feature release [v0.2.9](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9-steamdeck-content) remains available with its runtime/source package and full content notes.
-
-[Download the v0.2.9 prerelease](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9-steamdeck-content). It includes the runtime archive, unified source snapshot, native content guide, supported-mods guide, release notes, manifest and SHA256SUMS. The one native executable includes a live CE map catalog, texture-pack overrides and Deck-gated Off/Quality/Performance rendering alongside campaign, online co-op and multiplayer. Previews 2.8 and 2.8.1 remain available for rollback.
+Earlier 2.9.3 rules, 2.9.2 menus, 2.9.1 content hotfix and 2.9 content releases remain available. Previous 2.8 and 2.8.1 builds remain available for rollback.
 
 Menu routes: Multiplayer → Join/Create/Local Split/Edit Game Types; Create Game → Game Modes (Combat/Factions/Race/Standard) or Network Options; Custom Maps & Mods → Custom Maps → Browse; Characters remains separate. The editor saves game types, weapons, players, vehicles and scoring. Zombies uses a sword only when the selected map contains the required loaded tag/assets; missing content refuses infection and preserves inventory.
 
@@ -22,7 +20,7 @@ The creator's main Deck app remains `/home/deck/Games/HaloCE`; its executable, l
 - **Host profiles V21 / V20 / V11:** selected in the same executable. V11 is multiplayer-only. Native room joins select the advertised profile in-process.
 - **Host Match Character:** selects a map-local biped for server-created multiplayer/co-op player units. Missing bipeds retain the map standard. Stock multiplayer maps do not gain campaign assets automatically.
 
-CE609 maps load directly through the native importer. Import owner-supplied `bitmaps.map`, `sounds.map` and `loc.map` companions into `assets/maps/ce` when referenced. OpenSauce `.yelo`, Chimera Lua/DLL and other engine extensions require individual native ports. Classic Halo PC/CE address snapshots stay separately listed and require a classic protocol client. [Supported content and mod path](releases/v0.2.9.2-steamdeck-menus/SUPPORTED-MODS.md); see [native content details](releases/v0.2.9-steamdeck-content/NATIVE-CONTENT.md)..
+CE609 maps load directly through the native importer. Import owner-supplied `bitmaps.map`, `sounds.map` and `loc.map` companions into `assets/maps/ce` when referenced. OpenSauce `.yelo`, Chimera Lua/DLL and other engine extensions require individual native ports. Classic Halo PC/CE address snapshots stay separately listed and require a classic protocol client. [Supported content and mod path](releases/v0.2.9.4-steamdeck-runtime/SUPPORTED-MODS.md); see [native content details](releases/v0.2.9.4-steamdeck-runtime/NATIVE-CONTENT.md).
 
 ## Authoritative unified source
 
@@ -38,9 +36,9 @@ Use 32-bit SDL3; the build notes describe the SteamOS libm shim. A compatible ow
 
 ## Verification
 
-Preview 2.9.2 binary SHA-256: `03a94e8d49c3533807c478ba2a3390080db8f74b8b1a207b31510efa2882c84b`. The 2.9.2 executable is atomically installed on the Deck with exact hash verified. The user’s public match remains live on prior process PID 579445 (hash `84336f0f5394a53ea9d8ff6fc8b1e350c6709feb7aa967d378915b9ff3003918`) until relaunch; rollback is preserved as `halo.before-menus292-20261007`. Rollback is preserved as `halo.before-content29-20261007`.
+The exact 2.9.4 executable SHA-256 is `8335b4f246b592854a91916bb36141c884883eb197eff1f5e59e4fe78aae64fc`; Deck destination/readback and running-process hashes match. A natural V21 campaign browser session loaded `a50`; a three-second client movement input produced an agreeing host position. This verifies movement/state agreement in the loaded mission, not a completed campaign.
 
-The reviewed Deck catalog screen showed a dynamic SEARCH MAPS field, 5,020 matching entries across 558 pages, and populated results. Parser query behavior was unit-tested; physical search input and optional XTest input remain unverified. Native software-GL world probes ran Off/Quality/Performance at 1280x800, but they do not measure Deck performance. A synthetic TGA followed bitmap identity through decode and GL upload, but the captured image did not visibly show the override. Full 128-player acceptance, live preset matches, Friends and voice remain open. [Hotfix notes](releases/v0.2.9.1-steamdeck-content/release-notes.md) and [native content guide](releases/v0.2.9-steamdeck-content/NATIVE-CONTENT.md).
+The 65-second Deck performance capture above used 2.9.4. Earlier 0f6 tests covered two CE catalog map downloads and a two-client Zombies end-round; separate 5ecb/4dd54 tests covered the 128-slot synthetic roster and visible synthetic texture override. Those checks are pinned to predecessor hashes in the release evidence. Synthetic peers do not establish 128 real users. Physical controller search, full campaign completion, Friends, voice and broad legacy interoperability remain unverified.
 
 ## Credits and licenses
 
