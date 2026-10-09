@@ -1,6 +1,4 @@
-# HaloDeck — native Halo for Steam Deck and Linux
-
-## Current Steam Deck/Linux 2.9.9 — lobby stability
+# Steam Deck/Linux 2.9.9 — lobby stability
 
 [Download runtime and matching source](https://github.com/Jmesmykil/HolaDeck/releases/tag/v0.2.9.9-steamdeck-lobby-stability).
 Executable SHA-256: 13661136b9dc51b454d6d665df0c4306415bcd3c01f2c862180166591fc4229b. This exact build is installed through the existing Deck shortcut, with the previous 2.9.8 and stable 2.9.6 rollbacks retained.
@@ -31,16 +29,3 @@ Complete race-route packs, specialized bots, Prop Hunt, persistent friends, full
 [Guide](unified/docs/LOBBY-STABILITY-2.9.9.md) ·
 [Acceptance](releases/v0.2.9.9-steamdeck-lobby-stability/ACCEPTANCE.json) ·
 [Deck hardware evidence](releases/v0.2.9.9-steamdeck-lobby-stability/DECK-GPU.json).
-## Install and play
-
-Extract the Linux runtime, supply your own compatible game maps in assets/maps, and run launch_halo.sh natively with Proton OFF. Keep your existing settings and saves. No game maps, resource companions, console keys or personal saves are provided.
-
-Online campaign supports remote players without requiring a second local controller. Native multiplayer/campaign and classic PC/CE directories remain separately filtered by source and version; classic snapshots require a compatible classic client.
-
-CE609 maps needing external resources require owner-supplied bitmaps.map, sounds.map and loc.map under assets/maps/ce. DLL/Lua/OpenSauce/shader engine extensions need individual native ports. The texture catalogue is an initial compatible content source, not a claim that all CE mods run natively.
-
-## Source and credits
-
-Matching Linux source is in [unified/](unified/) and the release source ZIP. Original decompilation, OpenCE, port and library attribution/licenses remain intact. Optional authored texture packages retain their own licenses. Earlier releases remain available for rollback.
-
-This unofficial fan project is not endorsed by Microsoft, Bungie or Halo Studios.
